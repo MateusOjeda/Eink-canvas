@@ -2,6 +2,8 @@ import { quantizeFloydSteinberg } from "./algorithms/floyd-steinberg";
 
 import { quantizeFloydSteinbergOklabSerpentine } from "./algorithms/floyd-steinberg-oklab-serpentine";
 
+import { quantizeBarycentricBlueNoise } from "./algorithms/barycentric-blue-noise";
+
 import { quantizeNearest } from "./algorithms/nearest";
 
 import { loadImageRgba, savePalettePreview } from "./image";
@@ -60,6 +62,15 @@ export function convertToSpectra6FloydSteinbergOklabSerpentine(uri: string) {
 	);
 }
 
+export function convertToSpectra6BarycentricBlueNoise(uri: string) {
+	return processSpectra6(
+		uri,
+		quantizeBarycentricBlueNoise,
+		"barycentric-blue-noise",
+		"spectra6-barycentric-blue-noise",
+	);
+}
+
 export function convertToSpectra6(uri: string, algorithm: Spectra6Algorithm) {
 	switch (algorithm) {
 		case "nearest-rgb":
@@ -70,5 +81,8 @@ export function convertToSpectra6(uri: string, algorithm: Spectra6Algorithm) {
 
 		case "floyd-steinberg-oklab-serpentine":
 			return convertToSpectra6FloydSteinbergOklabSerpentine(uri);
+
+		case "barycentric-blue-noise":
+			return convertToSpectra6BarycentricBlueNoise(uri);
 	}
 }

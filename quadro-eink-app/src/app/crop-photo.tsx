@@ -400,6 +400,11 @@ export default function CropPhotoScreen() {
 							value="floyd-steinberg-rgb"
 						/>
 
+						<Picker.Item
+							label="Barycentric + Blue Noise"
+							value="barycentric-blue-noise"
+						/>
+
 						<Picker.Item label="Nearest RGB" value="nearest-rgb" />
 					</Picker>
 				</View>

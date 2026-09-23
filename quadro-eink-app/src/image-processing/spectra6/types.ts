@@ -13,4 +13,5 @@ export type Spectra6Quantizer = (
 export type Spectra6Algorithm =
 	| "nearest-rgb"
 	| "floyd-steinberg-rgb"
-	| "floyd-steinberg-oklab-serpentine";
+	| "floyd-steinberg-oklab-serpentine"
+	| "barycentric-blue-noise";
