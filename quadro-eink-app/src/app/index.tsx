@@ -1,30 +1,82 @@
-import { router } from "expo-router";
+import { useCallback, useRef, useState } from "react";
+
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { router, useFocusEffect } from "expo-router";
+
+import { getDevices } from "@/firebase/devices";
+import type { Device } from "@/types/device";
+
 export default function HomeScreen() {
+	const [devices, setDevices] = useState<Device[] | null>(null);
+
+	const hasHandledInitialLoad = useRef(false);
+
+	useFocusEffect(
+		useCallback(() => {
+			const loadDevices = async () => {
+				const loadedDevices = await getDevices();
+
+				setDevices(loadedDevices);
+
+				// A entrada automática no único device
+				// só acontece na primeira carga da Home.
+				if (!hasHandledInitialLoad.current) {
+					hasHandledInitialLoad.current = true;
+
+					if (loadedDevices.length === 1) {
+						router.push({
+							pathname: "/device/[deviceId]",
+							params: {
+								deviceId: loadedDevices[0].id,
+							},
+						});
+					}
+				}
+			};
+
+			loadDevices();
+		}, []),
+	);
+
+	if (!devices) {
+		return <View style={styles.container} />;
+	}
+
 	return (
 		<View style={styles.container}>
-			<View style={styles.header}>
-				<Text style={styles.title}>Quadro Eink</Text>
+			<Text style={styles.title}>Meus quadros</Text>
 
-				<Pressable onPress={() => router.push("/settings")}>
-					<Text style={styles.settings}>Configurações</Text>
-				</Pressable>
-			</View>
+			<View style={styles.deviceList}>
+				{devices.map((device) => (
+					<Pressable
+						key={device.id}
+						style={styles.deviceButton}
+						onPress={() =>
+							router.push({
+								pathname: "/device/[deviceId]",
+								params: {
+									deviceId: device.id,
+								},
+							})
+						}
+					>
+						<Text style={styles.deviceName}>{device.name}</Text>
 
-			<View style={styles.content}>
-				<Text style={styles.emptyTitle}>Nenhuma foto ainda</Text>
-
-				<Text style={styles.emptyText}>
-					Adicione uma foto para começar.
-				</Text>
+						<Text style={styles.deviceModel}>
+							{device.displayType === "spectra6-13.3"
+								? 'Spectra 6 — 13,3"'
+								: 'Spectra 6 — 7,3"'}
+						</Text>
+					</Pressable>
+				))}
 			</View>
 
 			<Pressable
-				style={styles.button}
-				onPress={() => router.push("/add-photo")}
+				style={styles.addButton}
+				onPress={() => router.push("/register-device")}
 			>
-				<Text style={styles.buttonText}>Adicionar foto</Text>
+				<Text style={styles.addButtonText}>Adicionar dispositivo</Text>
 			</Pressable>
 		</View>
 	);
@@ -33,49 +85,47 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		padding: 24,
 		backgroundColor: "#ffffff",
-	},
-
-	header: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
+		padding: 24,
 	},
 
 	title: {
-		fontSize: 28,
+		fontSize: 26,
 		fontWeight: "700",
+		marginBottom: 24,
 	},
 
-	settings: {
-		fontSize: 15,
+	deviceList: {
+		gap: 12,
 	},
 
-	content: {
-		flex: 1,
-		justifyContent: "center",
-		alignItems: "center",
+	deviceButton: {
+		borderWidth: 1,
+		borderColor: "#dddddd",
+		borderRadius: 12,
+		padding: 18,
 	},
 
-	emptyTitle: {
-		fontSize: 20,
+	deviceName: {
+		fontSize: 17,
 		fontWeight: "600",
 	},
 
-	emptyText: {
-		marginTop: 8,
-		fontSize: 15,
+	deviceModel: {
+		marginTop: 4,
+		fontSize: 13,
+		color: "#666666",
 	},
 
-	button: {
-		paddingVertical: 16,
-		borderRadius: 12,
+	addButton: {
+		marginTop: 20,
 		backgroundColor: "#111111",
+		borderRadius: 12,
+		paddingVertical: 16,
 		alignItems: "center",
 	},
 
-	buttonText: {
+	addButtonText: {
 		color: "#ffffff",
 		fontSize: 16,
 		fontWeight: "600",

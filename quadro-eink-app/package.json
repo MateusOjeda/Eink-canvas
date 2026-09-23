@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.19",
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-picker/picker": "2.11.4",
     "@shopify/react-native-skia": "2.6.2",
     "expo": "~57.0.24",
@@ -23,6 +24,7 @@
     "expo-symbols": "~57.0.3",
     "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
+    "firebase": "^12.19.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",

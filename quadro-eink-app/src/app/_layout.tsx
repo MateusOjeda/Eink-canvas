@@ -34,6 +34,12 @@ export default function RootLayout() {
 						title: "Prévia",
 					}}
 				/>
+				<Stack.Screen
+					name="device/[deviceId]"
+					options={{
+						title: "Quadro",
+					}}
+				/>
 			</Stack>
 		</GestureHandlerRootView>
 	);
