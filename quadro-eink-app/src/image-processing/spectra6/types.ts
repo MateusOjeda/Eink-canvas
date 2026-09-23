@@ -1,0 +1,16 @@
+export type Spectra6Result = {
+	uri: string;
+	width: number;
+	height: number;
+};
+
+export type Spectra6Quantizer = (
+	rgba: Uint8Array,
+	width: number,
+	height: number,
+) => Uint8Array;
+
+export type Spectra6Algorithm =
+	| "nearest-rgb"
+	| "floyd-steinberg-rgb"
+	| "floyd-steinberg-oklab-serpentine";
