@@ -49,13 +49,39 @@ export default function DeviceScreen() {
 					title: "Quadro",
 
 					headerRight: () => (
-						<Pressable onPress={handleDelete} hitSlop={12}>
-							<Ionicons
-								name="trash-outline"
-								size={21}
-								color="#666666"
-							/>
-						</Pressable>
+						<View
+							style={{
+								flexDirection: "row",
+								alignItems: "center",
+								gap: 18,
+							}}
+						>
+							<Pressable
+								onPress={() =>
+									router.push({
+										pathname: "/device/[deviceId]/edit",
+										params: {
+											deviceId,
+										},
+									})
+								}
+								hitSlop={12}
+							>
+								<Ionicons
+									name="pencil-outline"
+									size={21}
+									color="#666666"
+								/>
+							</Pressable>
+
+							<Pressable onPress={handleDelete} hitSlop={12}>
+								<Ionicons
+									name="trash-outline"
+									size={21}
+									color="#666666"
+								/>
+							</Pressable>
+						</View>
 					),
 				}}
 			/>
