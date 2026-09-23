@@ -26,7 +26,7 @@ import { Picker } from "@react-native-picker/picker";
 
 import { getDisplaySize } from "@/constants/displays";
 
-import { DisplayOrientation, DisplayType } from "@/types/display";
+import type { DisplayOrientation, DisplayType } from "@/types/display";
 
 import { convertToSpectra6 } from "@/image-processing/spectra6/index";
 
@@ -46,6 +46,10 @@ export default function CropPhotoScreen() {
 		orientation: DisplayOrientation;
 	}>();
 
+	/*
+	 * Reconstrói a URI da foto que copiamos
+	 * anteriormente para o cache do aplicativo.
+	 */
 	const uri = Paths.join(Paths.cache, params.fileName);
 
 	const orientation = params.orientation;
@@ -57,7 +61,10 @@ export default function CropPhotoScreen() {
 	const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
 	/*
-	 * Depois isso virá do quadro cadastrado.
+	 * TEMPORÁRIO.
+	 *
+	 * Depois isso virá do dispositivo
+	 * selecionado/cadastrado.
 	 */
 	const displayType: DisplayType = "spectra6-13.3";
 
@@ -66,19 +73,32 @@ export default function CropPhotoScreen() {
 	const aspectRatio = displaySize.width / displaySize.height;
 
 	/*
-	 * Algoritmo selecionado.
+	 * Algoritmo padrão.
 	 */
 	const [algorithm, setAlgorithm] = useState<Spectra6Algorithm>(
 		"floyd-steinberg-oklab-serpentine",
 	);
 
 	/*
-	 * Estado da tela de processamento.
+	 * Loading durante:
+	 *
+	 * crop
+	 * +
+	 * resize
+	 * +
+	 * quantização
+	 * +
+	 * preview
+	 * +
+	 * .bin
 	 */
 	const [isProcessing, setIsProcessing] = useState(false);
 
 	/*
-	 * Tamanho visual da área de crop.
+	 * Tamanho visual da janela de crop.
+	 *
+	 * A resolução real continua sendo
+	 * displaySize.width x displaySize.height.
 	 */
 	const availableWidth = screenWidth - 48;
 
@@ -104,11 +124,13 @@ export default function CropPhotoScreen() {
 	const savedScale = useSharedValue(1);
 
 	/*
-	 * Escala inicial para a imagem
-	 * preencher completamente o crop.
+	 * Escala mínima necessária para
+	 * a imagem preencher completamente
+	 * a janela de crop.
 	 */
 	const baseScale = Math.max(
 		cropWidth / imageWidth,
+
 		cropHeight / imageHeight,
 	);
 
@@ -117,8 +139,8 @@ export default function CropPhotoScreen() {
 	const renderedHeight = imageHeight * baseScale;
 
 	/*
-	 * Reseta enquadramento quando
-	 * imagem ou área mudar.
+	 * Reseta o enquadramento caso
+	 * dimensões relevantes mudem.
 	 */
 	useEffect(() => {
 		translateX.value = 0;
@@ -132,7 +154,7 @@ export default function CropPhotoScreen() {
 	}, [cropWidth, cropHeight, imageWidth, imageHeight]);
 
 	/*
-	 * Arrastar.
+	 * Arrastar imagem.
 	 */
 	const panGesture = Gesture.Pan()
 		.onBegin(() => {
@@ -151,26 +173,33 @@ export default function CropPhotoScreen() {
 
 			translateX.value = clamp(
 				savedTranslateX.value + event.translationX,
+
 				-maxX,
 				maxX,
 			);
 
 			translateY.value = clamp(
 				savedTranslateY.value + event.translationY,
+
 				-maxY,
 				maxY,
 			);
 		});
 
 	/*
-	 * Zoom.
+	 * Zoom com pinça.
 	 */
 	const pinchGesture = Gesture.Pinch()
 		.onBegin(() => {
 			savedScale.value = scale.value;
 		})
 		.onUpdate((event) => {
-			const newScale = clamp(savedScale.value * event.scale, 1, 5);
+			const newScale = clamp(
+				savedScale.value * event.scale,
+
+				1,
+				5,
+			);
 
 			scale.value = newScale;
 
@@ -182,16 +211,27 @@ export default function CropPhotoScreen() {
 
 			const maxY = Math.max(0, (currentHeight - cropHeight) / 2);
 
+			/*
+			 * Se diminuirmos o zoom,
+			 * também precisamos corrigir
+			 * a posição para evitar espaço vazio.
+			 */
 			translateX.value = clamp(translateX.value, -maxX, maxX);
 
 			translateY.value = clamp(translateY.value, -maxY, maxY);
 		});
 
+	/*
+	 * Permite pan + pinch simultâneos.
+	 */
 	const gesture = Gesture.Simultaneous(panGesture, pinchGesture);
 
 	/*
-	 * Mantemos posição e escala
-	 * em transforms separados.
+	 * Mantemos translate e scale
+	 * em elementos diferentes.
+	 *
+	 * Isso evita distorções na matemática
+	 * dos limites de arraste.
 	 */
 	const animatedPositionStyle = useAnimatedStyle(() => ({
 		transform: [
@@ -213,9 +253,10 @@ export default function CropPhotoScreen() {
 	}));
 
 	/*
-	 * Gera a imagem recortada
-	 * já na resolução final
-	 * do display.
+	 * Converte o enquadramento visual
+	 * para coordenadas da imagem original,
+	 * faz o crop e já redimensiona para
+	 * a resolução final do display.
 	 */
 	const createCroppedImage = async () => {
 		const currentScale = scale.value;
@@ -236,12 +277,20 @@ export default function CropPhotoScreen() {
 				translateY.value) /
 			effectiveScale;
 
+		/*
+		 * Manipulador trabalha em pixels.
+		 */
 		const width = Math.min(imageWidth, Math.round(rawCropWidth));
 
 		const height = Math.min(imageHeight, Math.round(rawCropHeight));
 
+		/*
+		 * Proteção contra arredondamento
+		 * ultrapassar os limites da imagem.
+		 */
 		const originX = Math.max(
 			0,
+
 			Math.min(
 				imageWidth - width,
 
@@ -251,6 +300,7 @@ export default function CropPhotoScreen() {
 
 		const originY = Math.max(
 			0,
+
 			Math.min(
 				imageHeight - height,
 
@@ -279,16 +329,27 @@ export default function CropPhotoScreen() {
 	};
 
 	/*
-	 * Crop → algoritmo Spectra 6
-	 * → preview.
+	 * Fluxo completo:
+	 *
+	 * crop
+	 * ↓
+	 * resize
+	 * ↓
+	 * algoritmo Spectra 6
+	 * ↓
+	 * PNG de preview
+	 * ↓
+	 * arquivo .bin
+	 * ↓
+	 * preview-photo
 	 */
 	const continueWithCrop = async () => {
 		setIsProcessing(true);
 
 		/*
-		 * Permite ao React desenhar
-		 * a tela de loading antes
-		 * do processamento pesado.
+		 * Pequeno atraso para permitir que
+		 * React Native desenhe o loading
+		 * antes do loop pesado começar.
 		 */
 		await new Promise<void>((resolve) => {
 			setTimeout(resolve, 50);
@@ -308,7 +369,13 @@ export default function CropPhotoScreen() {
 				pathname: "/preview-photo",
 
 				params: {
+					/*
+					 * Não passamos file:// pelo Router.
+					 * Passamos apenas os nomes dos arquivos.
+					 */
 					fileName: Paths.basename(spectraImage.uri),
+
+					binFileName: Paths.basename(spectraImage.binUri),
 
 					imageWidth: spectraImage.width.toString(),
 
@@ -323,8 +390,7 @@ export default function CropPhotoScreen() {
 	};
 
 	/*
-	 * Tela temporária durante
-	 * processamento.
+	 * Loading.
 	 */
 	if (isProcessing) {
 		return (
@@ -360,13 +426,16 @@ export default function CropPhotoScreen() {
 					>
 						<Animated.View style={animatedPositionStyle}>
 							<Animated.Image
-								source={{ uri }}
+								source={{
+									uri,
+								}}
 								style={[
 									{
 										width: renderedWidth,
 
 										height: renderedHeight,
 									},
+
 									animatedScaleStyle,
 								]}
 							/>
@@ -386,9 +455,9 @@ export default function CropPhotoScreen() {
 				<View style={styles.pickerContainer}>
 					<Picker
 						selectedValue={algorithm}
-						onValueChange={(value) =>
-							setAlgorithm(value as Spectra6Algorithm)
-						}
+						onValueChange={(value) => {
+							setAlgorithm(value as Spectra6Algorithm);
+						}}
 					>
 						<Picker.Item
 							label="Floyd–Steinberg OKLab"
@@ -403,6 +472,11 @@ export default function CropPhotoScreen() {
 						<Picker.Item
 							label="Barycentric + Blue Noise"
 							value="barycentric-blue-noise"
+						/>
+
+						<Picker.Item
+							label="Barycentric + Blue Noise (Compensated)"
+							value="barycentric-blue-noise-compensated"
 						/>
 
 						<Picker.Item label="Nearest RGB" value="nearest-rgb" />
@@ -420,21 +494,27 @@ export default function CropPhotoScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
+
 		backgroundColor: "#ffffff",
 
 		paddingHorizontal: 24,
+
 		paddingVertical: 20,
 	},
 
 	resolution: {
 		textAlign: "center",
+
 		fontSize: 14,
+
 		marginBottom: 12,
+
 		color: "#555555",
 	},
 
 	cropContainer: {
 		flex: 1,
+
 		justifyContent: "center",
 
 		alignItems: "center",
@@ -446,6 +526,7 @@ const styles = StyleSheet.create({
 		backgroundColor: "#eeeeee",
 
 		borderWidth: 2,
+
 		borderColor: "#111111",
 
 		justifyContent: "center",
@@ -459,7 +540,9 @@ const styles = StyleSheet.create({
 		color: "#666666",
 
 		fontSize: 14,
+
 		lineHeight: 20,
+
 		marginTop: 16,
 	},
 
@@ -469,7 +552,9 @@ const styles = StyleSheet.create({
 
 	algorithmLabel: {
 		fontSize: 15,
+
 		fontWeight: "600",
+
 		marginBottom: 8,
 	},
 
@@ -479,6 +564,7 @@ const styles = StyleSheet.create({
 		borderColor: "#cccccc",
 
 		borderRadius: 12,
+
 		overflow: "hidden",
 
 		backgroundColor: "#ffffff",
@@ -500,6 +586,7 @@ const styles = StyleSheet.create({
 		color: "#ffffff",
 
 		fontSize: 16,
+
 		fontWeight: "600",
 	},
 

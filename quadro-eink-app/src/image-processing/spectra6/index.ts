@@ -2,6 +2,8 @@ import { quantizeFloydSteinberg } from "./algorithms/floyd-steinberg";
 
 import { quantizeFloydSteinbergOklabSerpentine } from "./algorithms/floyd-steinberg-oklab-serpentine";
 
+import { quantizeBarycentricBlueNoiseCompensated } from "./algorithms/barycentric-blue-noise-compensated";
+
 import { quantizeBarycentricBlueNoise } from "./algorithms/barycentric-blue-noise";
 
 import { quantizeNearest } from "./algorithms/nearest";
@@ -9,6 +11,8 @@ import { quantizeNearest } from "./algorithms/nearest";
 import { loadImageRgba, savePalettePreview } from "./image";
 
 import { Spectra6Quantizer, Spectra6Algorithm } from "./types";
+
+import { saveSpectra6Binary } from "./binary";
 
 async function processSpectra6(
 	uri: string,
@@ -24,9 +28,11 @@ async function processSpectra6(
 
 	const paletteIndices = quantizer(pixels, width, height);
 
-	const quantizeMs = Date.now() - quantizeStart;
+	const binUri = saveSpectra6Binary(paletteIndices, width, height, prefix);
 
-	const result = savePalettePreview(paletteIndices, width, height, prefix);
+	const preview = savePalettePreview(paletteIndices, width, height, prefix);
+
+	const quantizeMs = Date.now() - quantizeStart;
 
 	const totalMs = Date.now() - totalStart;
 
@@ -37,7 +43,12 @@ async function processSpectra6(
 		totalMs,
 	});
 
-	return result;
+	return {
+		uri: preview.uri,
+		binUri,
+		width,
+		height,
+	};
 }
 
 export function convertToSpectra6Nearest(uri: string) {
@@ -71,6 +82,15 @@ export function convertToSpectra6BarycentricBlueNoise(uri: string) {
 	);
 }
 
+export function convertToSpectra6BarycentricBlueNoiseCompensated(uri: string) {
+	return processSpectra6(
+		uri,
+		quantizeBarycentricBlueNoiseCompensated,
+		"barycentric-blue-noise-compensated",
+		"spectra6-barycentric-blue-noise-compensated",
+	);
+}
+
 export function convertToSpectra6(uri: string, algorithm: Spectra6Algorithm) {
 	switch (algorithm) {
 		case "nearest-rgb":
@@ -84,5 +104,8 @@ export function convertToSpectra6(uri: string, algorithm: Spectra6Algorithm) {
 
 		case "barycentric-blue-noise":
 			return convertToSpectra6BarycentricBlueNoise(uri);
+
+		case "barycentric-blue-noise-compensated":
+			return convertToSpectra6BarycentricBlueNoiseCompensated(uri);
 	}
 }

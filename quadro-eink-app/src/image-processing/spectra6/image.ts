@@ -9,7 +9,7 @@ import { File, Paths } from "expo-file-system";
 
 import { SPECTRA6_PREVIEW_PALETTE } from "./palette";
 
-import { Spectra6Result } from "./types";
+import { Spectra6PreviewResult } from "./types";
 
 export async function loadImageRgba(uri: string) {
 	const sourceFile = new File(uri);
@@ -51,7 +51,7 @@ export function savePalettePreview(
 	width: number,
 	height: number,
 	prefix: string,
-): Spectra6Result {
+): Spectra6PreviewResult {
 	const rgba = new Uint8Array(width * height * 4);
 
 	for (let pixel = 0; pixel < paletteIndices.length; pixel++) {

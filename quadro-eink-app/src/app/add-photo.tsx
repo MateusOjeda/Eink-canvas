@@ -40,16 +40,6 @@ export default function AddPhotoScreen() {
 
 		setImageWidth(image.width);
 		setImageHeight(image.height);
-
-		console.log("Imagem copiada:", copiedFile.uri);
-
-		console.log("Imagem selecionada:", {
-			uri: image.uri,
-			width: image.width,
-			height: image.height,
-			fileName: image.fileName,
-			fileSize: image.fileSize,
-		});
 	};
 
 	const continueToCrop = () => {
