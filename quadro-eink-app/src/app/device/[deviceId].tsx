@@ -19,13 +19,14 @@ import {
 
 import { Ionicons } from "@expo/vector-icons";
 
-import { deleteDevice, getDevice } from "@/firebase/devices";
+import { getDevice } from "@/firebase/devices";
+
+import { getCollections, setCollectionActive } from "@/firebase/collections";
 
 import {
-	deletePhotoCollection,
-	getCollections,
-	setCollectionActive,
-} from "@/firebase/collections";
+	deleteCollectionWithPhotos,
+	deleteDeviceWithContent,
+} from "@/firebase/cascade";
 
 import type { Device } from "@/types/device";
 
@@ -81,21 +82,7 @@ export default function DeviceScreen() {
 
 					onPress: async () => {
 						try {
-							/*
-							 * Firestore não apaga
-							 * subcollections automaticamente.
-							 *
-							 * Por enquanto as collections
-							 * ainda não têm fotos.
-							 */
-							for (const photoCollection of collections) {
-								await deletePhotoCollection(
-									deviceId,
-									photoCollection.id,
-								);
-							}
-
-							await deleteDevice(deviceId);
+							await deleteDeviceWithContent(deviceId);
 
 							router.back();
 						} catch (error) {
@@ -148,22 +135,15 @@ export default function DeviceScreen() {
 
 				onPress: async () => {
 					try {
-						await deletePhotoCollection(
-							deviceId,
-							photoCollection.id,
-						);
+						await deleteDeviceWithContent(deviceId);
 
-						setCollections(
-							collections.filter(
-								(item) => item.id !== photoCollection.id,
-							),
-						);
+						router.back();
 					} catch (error) {
-						console.error(error);
+						console.error("Erro ao excluir quadro:", error);
 
 						Alert.alert(
 							"Erro",
-							"Não foi possível excluir a coleção.",
+							"Não foi possível excluir o quadro.",
 						);
 					}
 				},

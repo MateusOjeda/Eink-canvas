@@ -2,6 +2,7 @@ import {
 	collection,
 	deleteDoc,
 	doc,
+	setDoc,
 	getDoc,
 	getDocs,
 	updateDoc,
@@ -45,4 +46,20 @@ export async function updateDevice(
 
 export async function deleteDevice(deviceId: string): Promise<void> {
 	await deleteDoc(doc(db, "devices", deviceId));
+}
+
+export async function createDevice(device: Device): Promise<void> {
+	const deviceRef = doc(db, "devices", device.id);
+
+	const existingDevice = await getDoc(deviceRef);
+
+	if (existingDevice.exists()) {
+		throw new Error("Já existe um dispositivo com esse ID.");
+	}
+
+	await setDoc(deviceRef, {
+		name: device.name,
+		displayType: device.displayType,
+		updateIntervalMinutes: device.updateIntervalMinutes,
+	});
 }
