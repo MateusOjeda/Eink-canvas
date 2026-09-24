@@ -15,6 +15,8 @@ import { createDevice } from "@/firebase/devices";
 
 import type { DisplayType, DisplayOrientation } from "@/types/display";
 
+import { MIN_UPDATE_INTERVAL_MINUTES } from "@/constants/device";
+
 export default function RegisterDeviceScreen() {
 	const [orientation, setOrientation] =
 		useState<DisplayOrientation>("portrait");
@@ -33,6 +35,18 @@ export default function RegisterDeviceScreen() {
 		const deviceName = name.trim();
 
 		const interval = Number(updateIntervalMinutes);
+
+		if (
+			!Number.isInteger(interval) ||
+			interval < MIN_UPDATE_INTERVAL_MINUTES
+		) {
+			Alert.alert(
+				"Intervalo inválido",
+				`O intervalo mínimo de atualização é de ${MIN_UPDATE_INTERVAL_MINUTES} minutos.`,
+			);
+
+			return;
+		}
 
 		if (!id) {
 			Alert.alert("ID obrigatório", "Digite o ID do dispositivo.");
@@ -75,6 +89,12 @@ export default function RegisterDeviceScreen() {
 			setSaving(false);
 		}
 	};
+
+	const interval = Number(updateIntervalMinutes);
+
+	const invalidInterval =
+		updateIntervalMinutes.length > 0 &&
+		(!Number.isInteger(interval) || interval < MIN_UPDATE_INTERVAL_MINUTES);
 
 	return (
 		<View style={styles.container}>
@@ -148,8 +168,17 @@ export default function RegisterDeviceScreen() {
 				value={updateIntervalMinutes}
 				onChangeText={setUpdateIntervalMinutes}
 				keyboardType="number-pad"
-				style={styles.input}
+				placeholder="120"
+				style={[styles.input, invalidInterval && styles.inputError]}
 			/>
+
+			<Text
+				style={[styles.helperText, invalidInterval && styles.errorText]}
+			>
+				{invalidInterval
+					? "O mínimo é 120 minutos."
+					: "Mínimo: 120 minutos"}
+			</Text>
 
 			<Pressable
 				disabled={saving}
@@ -203,5 +232,20 @@ const styles = StyleSheet.create({
 		color: "#ffffff",
 		fontSize: 16,
 		fontWeight: "600",
+	},
+	inputError: {
+		borderColor: "#c62828",
+	},
+
+	helperText: {
+		marginTop: 6,
+
+		fontSize: 12,
+
+		color: "#777777",
+	},
+
+	errorText: {
+		color: "#c62828",
 	},
 });

@@ -16,6 +16,8 @@ import { getDevice, updateDevice } from "@/firebase/devices";
 
 import type { DisplayOrientation } from "@/types/display";
 
+import { MIN_UPDATE_INTERVAL_MINUTES } from "@/constants/device";
+
 export default function EditDeviceScreen() {
 	const { deviceId } = useLocalSearchParams<{
 		deviceId: string;
@@ -68,6 +70,18 @@ export default function EditDeviceScreen() {
 
 		const interval = Number(updateIntervalMinutes);
 
+		if (
+			!Number.isInteger(interval) ||
+			interval < MIN_UPDATE_INTERVAL_MINUTES
+		) {
+			Alert.alert(
+				"Intervalo inválido",
+				`O intervalo mínimo de atualização é de ${MIN_UPDATE_INTERVAL_MINUTES} minutos.`,
+			);
+
+			return;
+		}
+
 		if (!trimmedName) {
 			Alert.alert("Nome obrigatório", "Digite um nome para o quadro.");
 
@@ -109,6 +123,12 @@ export default function EditDeviceScreen() {
 			</View>
 		);
 	}
+
+	const interval = Number(updateIntervalMinutes);
+
+	const invalidInterval =
+		updateIntervalMinutes.length > 0 &&
+		(!Number.isInteger(interval) || interval < MIN_UPDATE_INTERVAL_MINUTES);
 
 	return (
 		<>
@@ -152,16 +172,25 @@ export default function EditDeviceScreen() {
 
 				<Text style={styles.label}>Intervalo de atualização</Text>
 
-				<View style={styles.intervalRow}>
-					<TextInput
-						value={updateIntervalMinutes}
-						onChangeText={setUpdateIntervalMinutes}
-						keyboardType="number-pad"
-						style={[styles.input, styles.intervalInput]}
-					/>
+				<TextInput
+					value={updateIntervalMinutes}
+					onChangeText={setUpdateIntervalMinutes}
+					keyboardType="number-pad"
+					placeholder="120"
+					style={[styles.input, invalidInterval && styles.inputError]}
+				/>
 
-					<Text style={styles.minutes}>minutos</Text>
-				</View>
+				<Text
+					style={[
+						styles.helperText,
+
+						invalidInterval && styles.errorText,
+					]}
+				>
+					{invalidInterval
+						? "O mínimo é 120 minutos."
+						: "Mínimo: 120 minutos"}
+				</Text>
 
 				<Pressable
 					disabled={saving}
@@ -244,5 +273,20 @@ const styles = StyleSheet.create({
 	},
 	option: {
 		paddingVertical: 10,
+	},
+	inputError: {
+		borderColor: "#c62828",
+	},
+
+	helperText: {
+		marginTop: 6,
+
+		fontSize: 12,
+
+		color: "#777777",
+	},
+
+	errorText: {
+		color: "#c62828",
 	},
 });
