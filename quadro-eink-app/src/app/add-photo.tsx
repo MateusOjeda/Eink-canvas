@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { File, Paths } from "expo-file-system";
 
 import { DisplayOrientation } from "@/types/display";
 
 export default function AddPhotoScreen() {
+	const { deviceId, collectionId } = useLocalSearchParams<{
+		deviceId: string;
+		collectionId: string;
+	}>();
+
 	const [imageUri, setImageUri] = useState<string | null>(null);
 	const [imageWidth, setImageWidth] = useState<number | null>(null);
 	const [imageHeight, setImageHeight] = useState<number | null>(null);
@@ -50,6 +55,9 @@ export default function AddPhotoScreen() {
 		router.push({
 			pathname: "/crop-photo",
 			params: {
+				deviceId,
+				collectionId,
+
 				fileName: Paths.basename(imageUri),
 				imageWidth: imageWidth.toString(),
 				imageHeight: imageHeight.toString(),

@@ -32,6 +32,10 @@ import { convertToSpectra6 } from "@/image-processing/spectra6/index";
 
 import type { Spectra6Algorithm } from "@/image-processing/spectra6/types";
 
+import { getDevice } from "@/firebase/devices";
+
+import { createThumbnail } from "@/image-processing/thumbnail";
+
 function clamp(value: number, min: number, max: number) {
 	"worklet";
 
@@ -40,6 +44,9 @@ function clamp(value: number, min: number, max: number) {
 
 export default function CropPhotoScreen() {
 	const params = useLocalSearchParams<{
+		deviceId: string;
+		collectionId: string;
+
 		fileName: string;
 		imageWidth: string;
 		imageHeight: string;
@@ -61,14 +68,52 @@ export default function CropPhotoScreen() {
 	const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
 	/*
-	 * TEMPORÁRIO.
-	 *
-	 * Depois isso virá do dispositivo
-	 * selecionado/cadastrado.
+	 * O modelo do display agora vem
+	 * do Device salvo no Firestore.
 	 */
-	const displayType: DisplayType = "spectra6-13.3";
+	const [displayType, setDisplayType] = useState<DisplayType | null>(null);
 
-	const displaySize = getDisplaySize(displayType, orientation);
+	const [deviceLoadError, setDeviceLoadError] = useState<string | null>(null);
+
+	useEffect(() => {
+		const loadDevice = async () => {
+			try {
+				setDeviceLoadError(null);
+
+				const device = await getDevice(params.deviceId);
+
+				if (!device) {
+					throw new Error("Dispositivo não encontrado.");
+				}
+
+				setDisplayType(device.displayType);
+			} catch (error) {
+				console.error("Erro ao carregar dispositivo:", error);
+
+				setDeviceLoadError(
+					error instanceof Error
+						? error.message
+						: "Não foi possível carregar o dispositivo.",
+				);
+			}
+		};
+
+		loadDevice();
+	}, [params.deviceId]);
+
+	/*
+	 * Enquanto o Device ainda está carregando,
+	 * usamos um tamanho provisório apenas para
+	 * manter todos os hooks sendo executados.
+	 *
+	 * Essa dimensão nunca é mostrada ao usuário.
+	 */
+	const displaySize = displayType
+		? getDisplaySize(displayType, orientation)
+		: {
+				width: 1,
+				height: 1,
+			};
 
 	const aspectRatio = displaySize.width / displaySize.height;
 
@@ -141,6 +186,10 @@ export default function CropPhotoScreen() {
 	/*
 	 * Reseta o enquadramento caso
 	 * dimensões relevantes mudem.
+	 *
+	 * Isso também acontece quando o Device
+	 * termina de carregar e descobrimos
+	 * a resolução real do display.
 	 */
 	useEffect(() => {
 		translateX.value = 0;
@@ -214,7 +263,8 @@ export default function CropPhotoScreen() {
 			/*
 			 * Se diminuirmos o zoom,
 			 * também precisamos corrigir
-			 * a posição para evitar espaço vazio.
+			 * a posição para evitar
+			 * espaço vazio.
 			 */
 			translateX.value = clamp(translateX.value, -maxX, maxX);
 
@@ -363,17 +413,25 @@ export default function CropPhotoScreen() {
 				algorithm,
 			);
 
+			const thumbnail = await createThumbnail(
+				croppedImage.uri,
+				displaySize.width,
+				displaySize.height,
+			);
+
 			setIsProcessing(false);
 
 			router.push({
 				pathname: "/preview-photo",
 
 				params: {
-					/*
-					 * Não passamos file:// pelo Router.
-					 * Passamos apenas os nomes dos arquivos.
-					 */
+					deviceId: params.deviceId,
+
+					collectionId: params.collectionId,
+
 					fileName: Paths.basename(spectraImage.uri),
+
+					thumbnailFileName: Paths.basename(thumbnail.uri),
 
 					binFileName: Paths.basename(spectraImage.binUri),
 
@@ -390,8 +448,31 @@ export default function CropPhotoScreen() {
 	};
 
 	/*
-	 * Loading.
+	 * IMPORTANTE:
+	 *
+	 * Os returns condicionais ficam somente
+	 * depois que TODOS os hooks acima
+	 * já foram executados.
 	 */
+
+	if (deviceLoadError) {
+		return (
+			<View style={styles.loadingContainer}>
+				<Text style={styles.errorText}>{deviceLoadError}</Text>
+			</View>
+		);
+	}
+
+	if (!displayType) {
+		return (
+			<View style={styles.loadingContainer}>
+				<ActivityIndicator size="large" />
+
+				<Text style={styles.loadingText}>Carregando quadro…</Text>
+			</View>
+		);
+	}
+
 	if (isProcessing) {
 		return (
 			<View style={styles.processingContainer}>
@@ -616,6 +697,34 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 
 		color: "#666666",
+
+		textAlign: "center",
+	},
+
+	loadingContainer: {
+		flex: 1,
+
+		backgroundColor: "#ffffff",
+
+		alignItems: "center",
+
+		justifyContent: "center",
+
+		padding: 24,
+	},
+
+	loadingText: {
+		marginTop: 12,
+
+		fontSize: 14,
+
+		color: "#666666",
+	},
+
+	errorText: {
+		fontSize: 15,
+
+		color: "#b00020",
 
 		textAlign: "center",
 	},

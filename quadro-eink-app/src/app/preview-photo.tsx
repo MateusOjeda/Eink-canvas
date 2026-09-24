@@ -1,16 +1,29 @@
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { useState } from "react";
+
 import { router, useLocalSearchParams } from "expo-router";
 
 import { Directory, File, Paths } from "expo-file-system";
 
+import { uploadLocalFile } from "@/firebase/storage";
+
+import { savePhoto } from "@/firebase/photos";
+
 export default function PreviewPhotoScreen() {
 	const params = useLocalSearchParams<{
+		deviceId: string;
+		collectionId: string;
+
 		fileName: string;
+		thumbnailFileName: string;
 		binFileName: string;
+
 		imageWidth: string;
 		imageHeight: string;
 	}>();
+
+	const [saving, setSaving] = useState(false);
 
 	const imageWidth = Number(params.imageWidth);
 
@@ -21,6 +34,8 @@ export default function PreviewPhotoScreen() {
 	 * nomes enviados pelo crop-photo.
 	 */
 	const previewUri = Paths.join(Paths.cache, params.fileName);
+
+	const thumbnailUri = Paths.join(Paths.cache, params.thumbnailFileName);
 
 	const binUri = Paths.join(Paths.cache, params.binFileName);
 
@@ -80,20 +95,40 @@ export default function PreviewPhotoScreen() {
 		}
 	};
 
-	/*
-	 * Ainda vamos implementar isso
-	 * quando ligarmos o app ao servidor.
-	 */
-	const useImage = () => {
-		console.log("Usar imagem:", {
-			previewFile: params.fileName,
+	const useImage = async () => {
+		try {
+			setSaving(true);
 
-			binFile: params.binFileName,
+			await savePhoto({
+				deviceId: params.deviceId,
 
-			width: imageWidth,
+				collectionId: params.collectionId,
 
-			height: imageHeight,
-		});
+				previewUri,
+				thumbnailUri,
+				binUri,
+
+				width: Number(params.imageWidth),
+
+				height: Number(params.imageHeight),
+			});
+
+			router.dismissTo({
+				pathname: "/device/[deviceId]/collection/[collectionId]",
+
+				params: {
+					deviceId: params.deviceId,
+
+					collectionId: params.collectionId,
+				},
+			});
+		} catch (error) {
+			console.error("Erro ao salvar imagem:", error);
+
+			Alert.alert("Erro", "Não foi possível salvar a imagem.");
+		} finally {
+			setSaving(false);
+		}
 	};
 
 	return (
@@ -135,8 +170,19 @@ export default function PreviewPhotoScreen() {
 				<Text style={styles.secondaryButtonText}>Baixar .bin</Text>
 			</Pressable>
 
-			<Pressable style={styles.primaryButton} onPress={useImage}>
-				<Text style={styles.primaryButtonText}>Usar imagem</Text>
+			<Pressable
+				disabled={saving}
+				style={[
+					styles.primaryButton,
+					saving && {
+						opacity: 0.5,
+					},
+				]}
+				onPress={useImage}
+			>
+				<Text style={styles.primaryButtonText}>
+					{saving ? "Salvando..." : "Usar imagem"}
+				</Text>
 			</Pressable>
 		</View>
 	);
