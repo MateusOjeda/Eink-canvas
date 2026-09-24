@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { File, Paths } from "expo-file-system";
 
 import { DisplayOrientation } from "@/types/display";
+
+import { getDevice } from "@/firebase/devices";
 
 export default function AddPhotoScreen() {
 	const { deviceId, collectionId } = useLocalSearchParams<{
@@ -18,6 +20,18 @@ export default function AddPhotoScreen() {
 
 	const [orientation, setOrientation] =
 		useState<DisplayOrientation>("portrait");
+
+	useEffect(() => {
+		const loadDevice = async () => {
+			const device = await getDevice(deviceId);
+
+			if (device) {
+				setOrientation(device.orientation);
+			}
+		};
+
+		loadDevice();
+	}, [deviceId]);
 
 	const pickImage = async () => {
 		const result = await ImagePicker.launchImageLibraryAsync({

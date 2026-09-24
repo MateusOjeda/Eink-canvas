@@ -27,11 +27,17 @@ import type { PhotoCollection } from "@/types/photo-collection";
 
 import type { Photo } from "@/types/photo";
 
+import { getDevice } from "@/firebase/devices";
+
+import type { Device } from "@/types/device";
+
 export default function CollectionScreen() {
 	const { deviceId, collectionId } = useLocalSearchParams<{
 		deviceId: string;
 		collectionId: string;
 	}>();
+
+	const [device, setDevice] = useState<Device | null>(null);
 
 	const [photoCollection, setPhotoCollection] =
 		useState<PhotoCollection | null>(null);
@@ -44,14 +50,17 @@ export default function CollectionScreen() {
 		useCallback(() => {
 			const load = async () => {
 				try {
-					const [loadedCollection, loadedPhotos] = await Promise.all([
-						getPhotoCollection(deviceId, collectionId),
+					const [loadedDevice, loadedCollection, loadedPhotos] =
+						await Promise.all([
+							getDevice(deviceId),
 
-						getPhotos(deviceId, collectionId),
-					]);
+							getPhotoCollection(deviceId, collectionId),
 
+							getPhotos(deviceId, collectionId),
+						]);
+
+					setDevice(loadedDevice);
 					setPhotoCollection(loadedCollection);
-
 					setPhotos(loadedPhotos);
 				} catch (error) {
 					console.error("Erro ao carregar coleção:", error);
@@ -101,6 +110,15 @@ export default function CollectionScreen() {
 							photo.thumbnailPath,
 						);
 
+						const photoOrientation =
+							photo.height > photo.width
+								? "portrait"
+								: "landscape";
+
+						const orientationMismatch =
+							device !== null &&
+							photoOrientation !== device.orientation;
+
 						return (
 							<Pressable
 								style={styles.photoContainer}
@@ -125,13 +143,19 @@ export default function CollectionScreen() {
 									resizeMode="cover"
 								/>
 
-								{!photo.active && (
+								{!photo.active ? (
 									<View style={styles.inactiveOverlay}>
 										<Text style={styles.inactiveText}>
 											Desativada
 										</Text>
 									</View>
-								)}
+								) : orientationMismatch ? (
+									<View style={styles.inactiveOverlay}>
+										<Text style={styles.inactiveText}>
+											Orientação incompatível
+										</Text>
+									</View>
+								) : null}
 							</Pressable>
 						);
 					}}
@@ -240,6 +264,8 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 
 		fontWeight: "600",
+
+		textAlign: "center",
 	},
 
 	addButton: {

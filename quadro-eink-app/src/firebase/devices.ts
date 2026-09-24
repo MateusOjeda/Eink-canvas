@@ -2,23 +2,31 @@ import {
 	collection,
 	deleteDoc,
 	doc,
-	setDoc,
 	getDoc,
 	getDocs,
+	setDoc,
 	updateDoc,
 } from "firebase/firestore";
 
 import { db } from "./config";
 
 import type { Device } from "@/types/device";
+import type { DisplayOrientation } from "@/types/display";
 
 export async function getDevices(): Promise<Device[]> {
 	const snapshot = await getDocs(collection(db, "devices"));
 
-	return snapshot.docs.map((document) => ({
-		id: document.id,
-		...document.data(),
-	})) as Device[];
+	return snapshot.docs.map((document) => {
+		const data = document.data();
+
+		return {
+			id: document.id,
+			name: data.name,
+			displayType: data.displayType,
+			orientation: data.orientation ?? "portrait",
+			updateIntervalMinutes: data.updateIntervalMinutes,
+		} as Device;
+	});
 }
 
 export async function getDevice(deviceId: string): Promise<Device | null> {
@@ -28,24 +36,15 @@ export async function getDevice(deviceId: string): Promise<Device | null> {
 		return null;
 	}
 
+	const data = snapshot.data();
+
 	return {
 		id: snapshot.id,
-		...snapshot.data(),
+		name: data.name,
+		displayType: data.displayType,
+		orientation: data.orientation ?? "portrait",
+		updateIntervalMinutes: data.updateIntervalMinutes,
 	} as Device;
-}
-
-export async function updateDevice(
-	deviceId: string,
-	data: {
-		name: string;
-		updateIntervalMinutes: number;
-	},
-): Promise<void> {
-	await updateDoc(doc(db, "devices", deviceId), data);
-}
-
-export async function deleteDevice(deviceId: string): Promise<void> {
-	await deleteDoc(doc(db, "devices", deviceId));
 }
 
 export async function createDevice(device: Device): Promise<void> {
@@ -60,6 +59,22 @@ export async function createDevice(device: Device): Promise<void> {
 	await setDoc(deviceRef, {
 		name: device.name,
 		displayType: device.displayType,
+		orientation: device.orientation,
 		updateIntervalMinutes: device.updateIntervalMinutes,
 	});
+}
+
+export async function updateDevice(
+	deviceId: string,
+	data: {
+		name: string;
+		orientation: DisplayOrientation;
+		updateIntervalMinutes: number;
+	},
+): Promise<void> {
+	await updateDoc(doc(db, "devices", deviceId), data);
+}
+
+export async function deleteDevice(deviceId: string): Promise<void> {
+	await deleteDoc(doc(db, "devices", deviceId));
 }

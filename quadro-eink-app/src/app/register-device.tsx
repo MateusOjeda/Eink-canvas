@@ -13,9 +13,11 @@ import { router } from "expo-router";
 
 import { createDevice } from "@/firebase/devices";
 
-import type { DisplayType } from "@/types/display";
+import type { DisplayType, DisplayOrientation } from "@/types/display";
 
 export default function RegisterDeviceScreen() {
+	const [orientation, setOrientation] =
+		useState<DisplayOrientation>("portrait");
 	const [deviceId, setDeviceId] = useState("");
 	const [name, setName] = useState("");
 
@@ -57,6 +59,7 @@ export default function RegisterDeviceScreen() {
 				id,
 				name: deviceName,
 				displayType,
+				orientation,
 				updateIntervalMinutes: interval,
 			});
 
@@ -114,6 +117,28 @@ export default function RegisterDeviceScreen() {
 				<Text>
 					{displayType === "spectra6-7.3" ? "● " : "○ "}
 					Spectra 6 — 7,3"
+				</Text>
+			</Pressable>
+
+			<Text style={styles.label}>Orientação</Text>
+
+			<Pressable
+				style={styles.option}
+				onPress={() => setOrientation("portrait")}
+			>
+				<Text>
+					{orientation === "portrait" ? "● " : "○ "}
+					Retrato
+				</Text>
+			</Pressable>
+
+			<Pressable
+				style={styles.option}
+				onPress={() => setOrientation("landscape")}
+			>
+				<Text>
+					{orientation === "landscape" ? "● " : "○ "}
+					Paisagem
 				</Text>
 			</Pressable>
 

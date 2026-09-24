@@ -14,10 +14,15 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 
 import { getDevice, updateDevice } from "@/firebase/devices";
 
+import type { DisplayOrientation } from "@/types/display";
+
 export default function EditDeviceScreen() {
 	const { deviceId } = useLocalSearchParams<{
 		deviceId: string;
 	}>();
+
+	const [orientation, setOrientation] =
+		useState<DisplayOrientation>("portrait");
 
 	const [name, setName] = useState("");
 
@@ -40,6 +45,8 @@ export default function EditDeviceScreen() {
 				}
 
 				setName(device.name);
+
+				setOrientation(device.orientation);
 
 				setUpdateIntervalMinutes(
 					device.updateIntervalMinutes.toString(),
@@ -81,6 +88,7 @@ export default function EditDeviceScreen() {
 
 			await updateDevice(deviceId, {
 				name: trimmedName,
+				orientation,
 				updateIntervalMinutes: interval,
 			});
 
@@ -119,6 +127,28 @@ export default function EditDeviceScreen() {
 					style={styles.input}
 					placeholder="Quadro da sala"
 				/>
+
+				<Text style={styles.label}>Orientação</Text>
+
+				<Pressable
+					style={styles.option}
+					onPress={() => setOrientation("portrait")}
+				>
+					<Text>
+						{orientation === "portrait" ? "● " : "○ "}
+						Retrato
+					</Text>
+				</Pressable>
+
+				<Pressable
+					style={styles.option}
+					onPress={() => setOrientation("landscape")}
+				>
+					<Text>
+						{orientation === "landscape" ? "● " : "○ "}
+						Paisagem
+					</Text>
+				</Pressable>
 
 				<Text style={styles.label}>Intervalo de atualização</Text>
 
@@ -211,5 +241,8 @@ const styles = StyleSheet.create({
 		color: "#ffffff",
 		fontSize: 16,
 		fontWeight: "600",
+	},
+	option: {
+		paddingVertical: 10,
 	},
 });
