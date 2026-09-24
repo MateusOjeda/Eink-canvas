@@ -1,1 +1,0 @@
-export const MIN_UPDATE_INTERVAL_MINUTES = 120;

@@ -16,7 +16,7 @@ import { Directory, File, Paths } from "expo-file-system";
 
 import { savePhoto } from "@/firebase/photos";
 
-import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/types/photo";
+import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/constants/constants";
 
 export default function PreviewPhotoScreen() {
 	const params = useLocalSearchParams<{

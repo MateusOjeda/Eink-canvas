@@ -14,7 +14,7 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 
 import { getPhoto, updatePhotoDescription } from "@/firebase/photos";
 
-import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/types/photo";
+import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/constants/constants";
 
 export default function PhotoDescriptionScreen() {
 	const { deviceId, collectionId, photoId } = useLocalSearchParams<{

@@ -15,7 +15,7 @@ import { createDevice } from "@/firebase/devices";
 
 import type { DisplayType, DisplayOrientation } from "@/types/display";
 
-import { MIN_UPDATE_INTERVAL_MINUTES } from "@/constants/device";
+import { MIN_UPDATE_INTERVAL_MINUTES } from "@/constants/constants";
 
 export default function RegisterDeviceScreen() {
 	const [orientation, setOrientation] =
