@@ -1,10 +1,15 @@
 import { useCallback, useRef, useState } from "react";
 
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { router, useFocusEffect } from "expo-router";
 
+import { Feather, Ionicons } from "@expo/vector-icons";
+
 import { getDevices } from "@/firebase/devices";
+
+import { deleteDeviceWithContent } from "@/firebase/cascade";
+
 import type { Device } from "@/types/device";
 
 export default function HomeScreen() {
@@ -27,6 +32,7 @@ export default function HomeScreen() {
 					if (loadedDevices.length === 1) {
 						router.push({
 							pathname: "/device/[deviceId]",
+
 							params: {
 								deviceId: loadedDevices[0].id,
 							},
@@ -39,6 +45,39 @@ export default function HomeScreen() {
 		}, []),
 	);
 
+	const handleDeleteDevice = (device: Device) => {
+		Alert.alert("Excluir quadro", `Excluir "${device.name}"?`, [
+			{
+				text: "Cancelar",
+				style: "cancel",
+			},
+			{
+				text: "Excluir",
+				style: "destructive",
+
+				onPress: async () => {
+					try {
+						await deleteDeviceWithContent(device.id);
+
+						setDevices(
+							(current) =>
+								current?.filter(
+									(item) => item.id !== device.id,
+								) ?? null,
+						);
+					} catch (error) {
+						console.error("Erro ao excluir quadro:", error);
+
+						Alert.alert(
+							"Erro",
+							"Não foi possível excluir o quadro.",
+						);
+					}
+				},
+			},
+		]);
+	};
+
 	if (!devices) {
 		return <View style={styles.container} />;
 	}
@@ -49,26 +88,60 @@ export default function HomeScreen() {
 
 			<View style={styles.deviceList}>
 				{devices.map((device) => (
-					<Pressable
-						key={device.id}
-						style={styles.deviceButton}
-						onPress={() =>
-							router.push({
-								pathname: "/device/[deviceId]",
-								params: {
-									deviceId: device.id,
-								},
-							})
-						}
-					>
-						<Text style={styles.deviceName}>{device.name}</Text>
+					<View key={device.id} style={styles.deviceCard}>
+						<Pressable
+							style={styles.deviceInfo}
+							onPress={() =>
+								router.push({
+									pathname: "/device/[deviceId]",
 
-						<Text style={styles.deviceModel}>
-							{device.displayType === "spectra6-13.3"
-								? 'Spectra 6 — 13,3"'
-								: 'Spectra 6 — 7,3"'}
-						</Text>
-					</Pressable>
+									params: {
+										deviceId: device.id,
+									},
+								})
+							}
+						>
+							<Text style={styles.deviceName}>{device.name}</Text>
+
+							<Text style={styles.deviceModel}>
+								{device.displayType === "spectra6-13.3"
+									? 'Spectra 6 — 13,3"'
+									: 'Spectra 6 — 7,3"'}
+							</Text>
+						</Pressable>
+
+						<View style={styles.deviceActions}>
+							<Pressable
+								hitSlop={10}
+								onPress={() =>
+									router.push({
+										pathname: "/device/[deviceId]/edit",
+
+										params: {
+											deviceId: device.id,
+										},
+									})
+								}
+							>
+								<Feather
+									name="edit"
+									size={20}
+									color="#666666"
+								/>
+							</Pressable>
+
+							<Pressable
+								hitSlop={10}
+								onPress={() => handleDeleteDevice(device)}
+							>
+								<Ionicons
+									name="trash-outline"
+									size={20}
+									color="#666666"
+								/>
+							</Pressable>
+						</View>
+					</View>
 				))}
 			</View>
 
@@ -99,11 +172,18 @@ const styles = StyleSheet.create({
 		gap: 12,
 	},
 
-	deviceButton: {
+	deviceCard: {
 		borderWidth: 1,
 		borderColor: "#dddddd",
 		borderRadius: 12,
 		padding: 18,
+
+		flexDirection: "row",
+		alignItems: "center",
+	},
+
+	deviceInfo: {
+		flex: 1,
 	},
 
 	deviceName: {
@@ -115,6 +195,12 @@ const styles = StyleSheet.create({
 		marginTop: 4,
 		fontSize: 13,
 		color: "#666666",
+	},
+
+	deviceActions: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 15,
 	},
 
 	addButton: {

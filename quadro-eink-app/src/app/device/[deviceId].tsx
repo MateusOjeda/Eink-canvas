@@ -23,10 +23,7 @@ import { getDevice } from "@/firebase/devices";
 
 import { getCollections, setCollectionActive } from "@/firebase/collections";
 
-import {
-	deleteCollectionWithPhotos,
-	deleteDeviceWithContent,
-} from "@/firebase/cascade";
+import { deleteCollectionWithPhotos } from "@/firebase/cascade";
 
 import type { Device } from "@/types/device";
 
@@ -51,6 +48,7 @@ export default function DeviceScreen() {
 			]);
 
 			setDevice(loadedDevice);
+
 			setCollections(loadedCollections);
 		} catch (error) {
 			console.error(error);
@@ -67,38 +65,6 @@ export default function DeviceScreen() {
 		}, [load]),
 	);
 
-	const handleDeleteDevice = () => {
-		Alert.alert(
-			"Excluir quadro",
-			"Tem certeza que deseja excluir este quadro?",
-			[
-				{
-					text: "Cancelar",
-					style: "cancel",
-				},
-				{
-					text: "Excluir",
-					style: "destructive",
-
-					onPress: async () => {
-						try {
-							await deleteDeviceWithContent(deviceId);
-
-							router.back();
-						} catch (error) {
-							console.error(error);
-
-							Alert.alert(
-								"Erro",
-								"Não foi possível excluir o quadro.",
-							);
-						}
-					},
-				},
-			],
-		);
-	};
-
 	const handleToggleCollection = async (
 		photoCollection: PhotoCollection,
 		active: boolean,
@@ -106,8 +72,8 @@ export default function DeviceScreen() {
 		try {
 			await setCollectionActive(deviceId, photoCollection.id, active);
 
-			setCollections(
-				collections.map((item) =>
+			setCollections((current) =>
+				current.map((item) =>
 					item.id === photoCollection.id
 						? {
 								...item,
@@ -135,15 +101,22 @@ export default function DeviceScreen() {
 
 				onPress: async () => {
 					try {
-						await deleteDeviceWithContent(deviceId);
+						await deleteCollectionWithPhotos(
+							deviceId,
+							photoCollection.id,
+						);
 
-						router.back();
+						setCollections((current) =>
+							current.filter(
+								(item) => item.id !== photoCollection.id,
+							),
+						);
 					} catch (error) {
-						console.error("Erro ao excluir quadro:", error);
+						console.error("Erro ao excluir coleção:", error);
 
 						Alert.alert(
 							"Erro",
-							"Não foi possível excluir o quadro.",
+							"Não foi possível excluir a coleção.",
 						);
 					}
 				},
@@ -164,39 +137,6 @@ export default function DeviceScreen() {
 			<Stack.Screen
 				options={{
 					title: device?.name ?? "Quadro",
-
-					headerRight: () => (
-						<View style={styles.headerButtons}>
-							<Pressable
-								onPress={() =>
-									router.push({
-										pathname: "/device/[deviceId]/edit",
-										params: {
-											deviceId,
-										},
-									})
-								}
-								hitSlop={12}
-							>
-								<Feather
-									name="edit"
-									size={21}
-									color="#666666"
-								/>
-							</Pressable>
-
-							<Pressable
-								hitSlop={12}
-								onPress={handleDeleteDevice}
-							>
-								<Ionicons
-									name="trash-outline"
-									size={21}
-									color="#666666"
-								/>
-							</Pressable>
-						</View>
-					),
 				}}
 			/>
 
@@ -215,8 +155,10 @@ export default function DeviceScreen() {
 									router.push({
 										pathname:
 											"/device/[deviceId]/collection/[collectionId]",
+
 										params: {
 											deviceId,
+
 											collectionId: photoCollection.id,
 										},
 									})
@@ -249,8 +191,10 @@ export default function DeviceScreen() {
 									onPress={() =>
 										router.push({
 											pathname: "/edit-collection",
+
 											params: {
 												deviceId,
+
 												collectionId:
 													photoCollection.id,
 											},
@@ -286,6 +230,7 @@ export default function DeviceScreen() {
 					onPress={() =>
 						router.push({
 							pathname: "/edit-collection",
+
 							params: {
 								deviceId,
 							},
@@ -311,12 +256,6 @@ const styles = StyleSheet.create({
 		backgroundColor: "#ffffff",
 		justifyContent: "center",
 		alignItems: "center",
-	},
-
-	headerButtons: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 18,
 	},
 
 	title: {
