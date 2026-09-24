@@ -43,3 +43,47 @@ export async function uploadLocalFile(
 
 	return path;
 }
+
+export function getStorageFileUrl(path: string): string {
+	const storageBucket = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
+
+	if (!storageBucket) {
+		throw new Error("EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET não configurado.");
+	}
+
+	return (
+		`https://firebasestorage.googleapis.com/v0/b/` +
+		`${encodeURIComponent(storageBucket)}/o/` +
+		`${encodeURIComponent(path)}` +
+		`?alt=media`
+	);
+}
+
+export async function deleteStorageFile(path: string): Promise<void> {
+	const storageBucket = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
+
+	if (!storageBucket) {
+		throw new Error("EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET não configurado.");
+	}
+
+	const deleteUrl =
+		`https://firebasestorage.googleapis.com/v0/b/` +
+		`${encodeURIComponent(storageBucket)}/o/` +
+		`${encodeURIComponent(path)}`;
+
+	const response = await fetch(deleteUrl, {
+		method: "DELETE",
+	});
+
+	/*
+	 * Se já não existe, para nós o resultado
+	 * desejado também foi atingido.
+	 */
+	if (!response.ok && response.status !== 404) {
+		const responseText = await response.text();
+
+		throw new Error(
+			`Erro ao excluir arquivo (${response.status}): ${responseText}`,
+		);
+	}
+}

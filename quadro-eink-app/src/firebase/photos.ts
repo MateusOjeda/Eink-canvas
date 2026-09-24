@@ -1,16 +1,19 @@
 import {
 	collection,
+	deleteDoc,
 	doc,
+	getDoc,
 	getDocs,
 	orderBy,
 	query,
 	serverTimestamp,
 	setDoc,
+	updateDoc,
 } from "firebase/firestore";
 
-import { db } from "./config";
+import { deleteStorageFile, uploadLocalFile } from "./storage";
 
-import { uploadLocalFile } from "./storage";
+import { db } from "./config";
 
 import type { Photo } from "@/types/photo";
 
@@ -141,4 +144,86 @@ export async function savePhoto({
 	});
 
 	return imageId;
+}
+
+export async function getPhoto(
+	deviceId: string,
+	collectionId: string,
+	photoId: string,
+): Promise<Photo | null> {
+	const photoRef = doc(
+		db,
+		"devices",
+		deviceId,
+		"collections",
+		collectionId,
+		"images",
+		photoId,
+	);
+
+	const snapshot = await getDoc(photoRef);
+
+	if (!snapshot.exists()) {
+		return null;
+	}
+
+	return {
+		id: snapshot.id,
+		...snapshot.data(),
+	} as Photo;
+}
+
+export async function setPhotoActive(
+	deviceId: string,
+	collectionId: string,
+	photoId: string,
+	active: boolean,
+): Promise<void> {
+	await updateDoc(
+		doc(
+			db,
+			"devices",
+			deviceId,
+			"collections",
+			collectionId,
+			"images",
+			photoId,
+		),
+		{
+			active,
+		},
+	);
+}
+
+export async function deletePhoto(
+	deviceId: string,
+	collectionId: string,
+	photo: Photo,
+): Promise<void> {
+	/*
+	 * Primeiro removemos os arquivos.
+	 *
+	 * Só depois apagamos o documento,
+	 * para não perdermos os paths caso
+	 * algum delete falhe.
+	 */
+	await Promise.all([
+		deleteStorageFile(photo.previewPath),
+
+		deleteStorageFile(photo.thumbnailPath),
+
+		deleteStorageFile(photo.epaperFilePath),
+	]);
+
+	await deleteDoc(
+		doc(
+			db,
+			"devices",
+			deviceId,
+			"collections",
+			collectionId,
+			"images",
+			photo.id,
+		),
+	);
 }
