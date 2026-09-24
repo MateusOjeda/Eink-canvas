@@ -17,7 +17,7 @@ import {
 	useLocalSearchParams,
 } from "expo-router";
 
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 
 import { getDevice } from "@/firebase/devices";
 
@@ -178,8 +178,8 @@ export default function DeviceScreen() {
 								}
 								hitSlop={12}
 							>
-								<Ionicons
-									name="pencil-outline"
+								<Feather
+									name="edit"
 									size={21}
 									color="#666666"
 								/>
@@ -257,8 +257,8 @@ export default function DeviceScreen() {
 										})
 									}
 								>
-									<Ionicons
-										name="pencil-outline"
+									<Feather
+										name="edit"
 										size={20}
 										color="#666666"
 									/>

@@ -1,4 +1,12 @@
-import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+	Alert,
+	Image,
+	Pressable,
+	StyleSheet,
+	Text,
+	View,
+	TextInput,
+} from "react-native";
 
 import { useState } from "react";
 
@@ -6,9 +14,9 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import { Directory, File, Paths } from "expo-file-system";
 
-import { uploadLocalFile } from "@/firebase/storage";
-
 import { savePhoto } from "@/firebase/photos";
+
+import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/types/photo";
 
 export default function PreviewPhotoScreen() {
 	const params = useLocalSearchParams<{
@@ -24,6 +32,8 @@ export default function PreviewPhotoScreen() {
 	}>();
 
 	const [saving, setSaving] = useState(false);
+
+	const [description, setDescription] = useState("");
 
 	const imageWidth = Number(params.imageWidth);
 
@@ -111,6 +121,8 @@ export default function PreviewPhotoScreen() {
 				width: Number(params.imageWidth),
 
 				height: Number(params.imageHeight),
+
+				description,
 			});
 
 			router.dismissTo({
@@ -169,6 +181,24 @@ export default function PreviewPhotoScreen() {
 			<Pressable style={styles.secondaryButton} onPress={downloadBin}>
 				<Text style={styles.secondaryButtonText}>Baixar .bin</Text>
 			</Pressable>
+
+			<View style={styles.descriptionSection}>
+				<Text style={styles.descriptionLabel}>Descrição</Text>
+
+				<TextInput
+					value={description}
+					onChangeText={setDescription}
+					multiline
+					maxLength={MAX_PHOTO_DESCRIPTION_LENGTH}
+					textAlignVertical="top"
+					placeholder="Quem está na foto? O que aconteceu? O que você quer lembrar?"
+					style={styles.descriptionInput}
+				/>
+
+				<Text style={styles.descriptionCounter}>
+					{description.length} / {MAX_PHOTO_DESCRIPTION_LENGTH}
+				</Text>
+			</View>
 
 			<Pressable
 				disabled={saving}
@@ -277,5 +307,38 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 
 		fontWeight: "600",
+	},
+	descriptionSection: {
+		marginTop: 20,
+	},
+
+	descriptionLabel: {
+		fontSize: 15,
+		fontWeight: "600",
+		marginBottom: 8,
+	},
+
+	descriptionInput: {
+		minHeight: 110,
+
+		borderWidth: 1,
+		borderColor: "#cccccc",
+		borderRadius: 12,
+
+		padding: 14,
+
+		fontSize: 15,
+		lineHeight: 21,
+
+		backgroundColor: "#ffffff",
+	},
+
+	descriptionCounter: {
+		marginTop: 6,
+
+		textAlign: "right",
+
+		fontSize: 12,
+		color: "#777777",
 	},
 });

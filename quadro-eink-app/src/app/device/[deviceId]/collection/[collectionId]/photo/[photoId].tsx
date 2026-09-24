@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 import {
 	ActivityIndicator,
@@ -11,15 +11,24 @@ import {
 	View,
 } from "react-native";
 
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import {
+	router,
+	Stack,
+	useLocalSearchParams,
+	useFocusEffect,
+} from "expo-router";
 
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 
 import { deletePhoto, getPhoto, setPhotoActive } from "@/firebase/photos";
 
 import { getStorageFileUrl } from "@/firebase/storage";
 
 import type { Photo } from "@/types/photo";
+
+import { getDevice } from "@/firebase/devices";
+
+import type { Device } from "@/types/device";
 
 export default function PhotoScreen() {
 	const { deviceId, collectionId, photoId } = useLocalSearchParams<{
@@ -28,41 +37,57 @@ export default function PhotoScreen() {
 		photoId: string;
 	}>();
 
+	const [device, setDevice] = useState<Device | null>(null);
+
 	const [photo, setPhoto] = useState<Photo | null>(null);
 
 	const [loading, setLoading] = useState(true);
 
 	const [updatingActive, setUpdatingActive] = useState(false);
 
-	useEffect(() => {
-		const loadPhoto = async () => {
-			try {
-				const loadedPhoto = await getPhoto(
-					deviceId,
-					collectionId,
-					photoId,
-				);
+	useFocusEffect(
+		useCallback(() => {
+			const load = async () => {
+				{
+					try {
+						const [loadedPhoto, loadedDevice] = await Promise.all([
+							getPhoto(deviceId, collectionId, photoId),
 
-				if (!loadedPhoto) {
-					Alert.alert("Foto não encontrada");
+							getDevice(deviceId),
+						]);
 
-					router.back();
+						if (!loadedPhoto) {
+							Alert.alert("Foto não encontrada");
 
-					return;
+							router.back();
+							return;
+						}
+
+						if (!loadedDevice) {
+							Alert.alert("Quadro não encontrado");
+
+							router.back();
+							return;
+						}
+
+						setPhoto(loadedPhoto);
+						setDevice(loadedDevice);
+					} catch (error) {
+						console.error("Erro ao carregar foto:", error);
+
+						Alert.alert(
+							"Erro",
+							"Não foi possível carregar a foto.",
+						);
+					} finally {
+						setLoading(false);
+					}
 				}
+			};
 
-				setPhoto(loadedPhoto);
-			} catch (error) {
-				console.error("Erro ao carregar foto:", error);
-
-				Alert.alert("Erro", "Não foi possível carregar a foto.");
-			} finally {
-				setLoading(false);
-			}
-		};
-
-		loadPhoto();
-	}, [deviceId, collectionId, photoId]);
+			load();
+		}, [deviceId, collectionId, photoId]),
+	);
 
 	const handleActiveChange = async (active: boolean) => {
 		if (!photo || updatingActive) {
@@ -136,6 +161,12 @@ export default function PhotoScreen() {
 		return null;
 	}
 
+	const photoOrientation =
+		photo.height > photo.width ? "portrait" : "landscape";
+
+	const orientationMismatch =
+		device !== null && photoOrientation !== device.orientation;
+
 	const previewUrl = getStorageFileUrl(photo.previewPath);
 
 	return (
@@ -165,6 +196,66 @@ export default function PhotoScreen() {
 						style={styles.preview}
 						resizeMode="contain"
 					/>
+				</View>
+
+				{orientationMismatch && (
+					<View style={styles.orientationWarning}>
+						<Ionicons
+							name="warning-outline"
+							size={20}
+							color="#7a5a00"
+						/>
+
+						<Text style={styles.orientationWarningText}>
+							Esta foto está em{" "}
+							{photoOrientation === "portrait"
+								? "modo retrato"
+								: "modo paisagem"}
+							, mas o quadro está configurado para{" "}
+							{device?.orientation === "portrait"
+								? "retrato"
+								: "paisagem"}
+							. Ela não será exibida.
+						</Text>
+					</View>
+				)}
+
+				<View style={styles.descriptionSection}>
+					<View style={styles.descriptionHeader}>
+						<Text style={styles.descriptionTitle}>Descrição</Text>
+
+						<Pressable
+							style={styles.descriptionEditButton}
+							onPress={() =>
+								router.push({
+									pathname:
+										"/device/[deviceId]/collection/[collectionId]/photo/[photoId]/description",
+
+									params: {
+										deviceId,
+										collectionId,
+										photoId,
+									},
+								})
+							}
+						>
+							<Feather
+								name={photo.description ? "edit" : "plus"}
+								size={22}
+								color="#333333"
+							/>
+						</Pressable>
+					</View>
+
+					{photo.description ? (
+						<Text style={styles.descriptionText}>
+							{photo.description}
+						</Text>
+					) : (
+						<Text style={styles.noDescription}>
+							Nenhuma descrição
+						</Text>
+					)}
 				</View>
 
 				<View style={styles.option}>
@@ -253,5 +344,77 @@ const styles = StyleSheet.create({
 		lineHeight: 18,
 
 		color: "#666666",
+	},
+	orientationWarning: {
+		marginTop: 20,
+
+		flexDirection: "row",
+		alignItems: "flex-start",
+
+		gap: 10,
+
+		padding: 14,
+
+		borderRadius: 10,
+
+		backgroundColor: "#fff6d8",
+	},
+
+	orientationWarningText: {
+		flex: 1,
+
+		fontSize: 13,
+		lineHeight: 18,
+
+		color: "#604800",
+	},
+	descriptionSection: {
+		marginTop: 28,
+
+		borderWidth: 1,
+		borderColor: "#e2e2e2",
+		borderRadius: 12,
+
+		padding: 16,
+
+		backgroundColor: "#ffffff",
+	},
+
+	descriptionHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+	},
+
+	descriptionTitle: {
+		fontSize: 16,
+		fontWeight: "600",
+	},
+
+	descriptionEditButton: {
+		width: 36,
+		height: 36,
+
+		alignItems: "center",
+		justifyContent: "center",
+
+		borderRadius: 18,
+	},
+
+	descriptionText: {
+		marginTop: 10,
+
+		fontSize: 15,
+		lineHeight: 21,
+
+		color: "#333333",
+	},
+
+	noDescription: {
+		marginTop: 10,
+
+		fontSize: 14,
+
+		color: "#888888",
 	},
 });

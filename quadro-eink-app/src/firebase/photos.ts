@@ -9,6 +9,7 @@ import {
 	serverTimestamp,
 	setDoc,
 	updateDoc,
+	deleteField,
 } from "firebase/firestore";
 
 import { deleteStorageFile, uploadLocalFile } from "./storage";
@@ -27,6 +28,8 @@ type SavePhotoParams = {
 
 	width: number;
 	height: number;
+
+	description?: string;
 };
 
 export async function getPhotos(
@@ -83,6 +86,8 @@ export async function savePhoto({
 
 	width,
 	height,
+
+	description,
 }: SavePhotoParams): Promise<string> {
 	/*
 	 * Gera um ID do Firestore,
@@ -126,6 +131,8 @@ export async function savePhoto({
 		uploadLocalFile(binUri, epaperFilePath, "application/octet-stream"),
 	]);
 
+	const trimmedDescription = description?.trim();
+
 	/*
 	 * Só agora a imagem passa a existir
 	 * oficialmente no banco.
@@ -141,6 +148,12 @@ export async function savePhoto({
 		height,
 
 		createdAt: serverTimestamp(),
+
+		...(trimmedDescription
+			? {
+					description: trimmedDescription,
+				}
+			: {}),
 	});
 
 	return imageId;
@@ -226,4 +239,35 @@ export async function deletePhoto(
 			photo.id,
 		),
 	);
+}
+
+export async function updatePhotoDescription(
+	deviceId: string,
+	collectionId: string,
+	photoId: string,
+	description: string,
+): Promise<void> {
+	const photoRef = doc(
+		db,
+		"devices",
+		deviceId,
+		"collections",
+		collectionId,
+		"images",
+		photoId,
+	);
+
+	const trimmedDescription = description.trim();
+
+	if (!trimmedDescription) {
+		await updateDoc(photoRef, {
+			description: deleteField(),
+		});
+
+		return;
+	}
+
+	await updateDoc(photoRef, {
+		description: trimmedDescription,
+	});
 }

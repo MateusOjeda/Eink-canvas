@@ -1,3 +1,5 @@
+export const MAX_PHOTO_DESCRIPTION_LENGTH = 300;
+
 export type Photo = {
 	id: string;
 
@@ -11,4 +13,6 @@ export type Photo = {
 	height: number;
 
 	createdAt?: unknown;
+
+	description?: string;
 };
