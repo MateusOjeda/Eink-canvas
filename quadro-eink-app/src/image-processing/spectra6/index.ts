@@ -6,6 +6,8 @@ import { quantizeBarycentricBlueNoiseCompensated } from "./algorithms/barycentri
 
 import { quantizeBarycentricBlueNoise } from "./algorithms/barycentric-blue-noise";
 
+import { convertToSpectra6GoodDisplayFloydSteinberg } from "./algorithms/good-display-floyd-steinberg";
+
 import { quantizeNearest } from "./algorithms/nearest";
 
 import { loadImageRgba, savePalettePreview } from "./image";
@@ -107,5 +109,8 @@ export function convertToSpectra6(uri: string, algorithm: Spectra6Algorithm) {
 
 		case "barycentric-blue-noise-compensated":
 			return convertToSpectra6BarycentricBlueNoiseCompensated(uri);
+
+		case "good-display-floyd-steinberg":
+			return convertToSpectra6GoodDisplayFloydSteinberg(uri);
 	}
 }

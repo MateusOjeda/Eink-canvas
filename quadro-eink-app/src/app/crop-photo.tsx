@@ -561,6 +561,11 @@ export default function CropPhotoScreen() {
 						/>
 
 						<Picker.Item label="Nearest RGB" value="nearest-rgb" />
+
+						<Picker.Item
+							label="Good Display — Floyd–Steinberg"
+							value="good-display-floyd-steinberg"
+						/>
 					</Picker>
 				</View>
 			</View>

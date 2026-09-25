@@ -22,4 +22,5 @@ export type Spectra6Algorithm =
 	| "floyd-steinberg-rgb"
 	| "floyd-steinberg-oklab-serpentine"
 	| "barycentric-blue-noise"
-	| "barycentric-blue-noise-compensated";
+	| "barycentric-blue-noise-compensated"
+	| "good-display-floyd-steinberg";
