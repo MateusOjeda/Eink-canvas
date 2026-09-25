@@ -17,7 +17,7 @@ import {
 	useLocalSearchParams,
 } from "expo-router";
 
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { getDevice } from "@/firebase/devices";
 
@@ -137,6 +137,28 @@ export default function DeviceScreen() {
 			<Stack.Screen
 				options={{
 					title: device?.name ?? "Quadro",
+
+					headerRight: () => (
+						<Pressable
+							hitSlop={12}
+							onPress={() =>
+								router.push({
+									pathname:
+										"/device/[deviceId]/temporary-photo",
+
+									params: {
+										deviceId,
+									},
+								})
+							}
+						>
+							<MaterialCommunityIcons
+								name="image-refresh-outline"
+								size={25}
+								color="#666666"
+							/>
+						</Pressable>
+					),
 				}}
 			/>
 
