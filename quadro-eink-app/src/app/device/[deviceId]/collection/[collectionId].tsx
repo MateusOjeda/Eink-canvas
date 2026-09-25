@@ -21,7 +21,7 @@ import { getPhotoCollection } from "@/firebase/collections";
 
 import { getPhotos } from "@/firebase/photos";
 
-import { getStorageFileUrl } from "@/firebase/storage";
+import { getStorageAuthHeaders, getStorageFileUrl } from "@/firebase/storage";
 
 import type { PhotoCollection } from "@/types/photo-collection";
 
@@ -37,6 +37,11 @@ export default function CollectionScreen() {
 		collectionId: string;
 	}>();
 
+	const [storageHeaders, setStorageHeaders] = useState<Record<
+		string,
+		string
+	> | null>(null);
+
 	const [device, setDevice] = useState<Device | null>(null);
 
 	const [photoCollection, setPhotoCollection] =
@@ -50,18 +55,25 @@ export default function CollectionScreen() {
 		useCallback(() => {
 			const load = async () => {
 				try {
-					const [loadedDevice, loadedCollection, loadedPhotos] =
-						await Promise.all([
-							getDevice(deviceId),
+					const [
+						loadedDevice,
+						loadedCollection,
+						loadedPhotos,
+						loadedStorageHeaders,
+					] = await Promise.all([
+						getDevice(deviceId),
 
-							getPhotoCollection(deviceId, collectionId),
+						getPhotoCollection(deviceId, collectionId),
 
-							getPhotos(deviceId, collectionId),
-						]);
+						getPhotos(deviceId, collectionId),
+
+						getStorageAuthHeaders(),
+					]);
 
 					setDevice(loadedDevice);
 					setPhotoCollection(loadedCollection);
 					setPhotos(loadedPhotos);
+					setStorageHeaders(loadedStorageHeaders);
 				} catch (error) {
 					console.error("Erro ao carregar coleção:", error);
 				} finally {
@@ -138,6 +150,7 @@ export default function CollectionScreen() {
 								<Image
 									source={{
 										uri: thumbnailUrl,
+										headers: storageHeaders ?? undefined,
 									}}
 									style={styles.thumbnail}
 									resizeMode="cover"

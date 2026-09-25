@@ -6,4 +6,5 @@ export type Device = {
 	displayType: DisplayType;
 	orientation: DisplayOrientation;
 	updateIntervalMinutes: number;
+	ownerUid: string;
 };

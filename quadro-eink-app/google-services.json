@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "121015925526",
+    "project_id": "einkcanvas",
+    "storage_bucket": "einkcanvas.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:121015925526:android:1b607bbdfcbc6545d7ae37",
+        "android_client_info": {
+          "package_name": "com.mateusojeda.quadroeink"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "121015925526-ab5i17b72s8fglp677le7pesimntg8va.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mateusojeda.quadroeink",
+            "certificate_hash": "a445fc33b4a7fdb03bcbad6169a6e120ad935273"
+          }
+        },
+        {
+          "client_id": "121015925526-0g6rsgofjmimsquld9m52hao0vt42je1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCT4kSulREaP6tWIn4oWmL39tEowHO_HhQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "121015925526-0g6rsgofjmimsquld9m52hao0vt42je1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

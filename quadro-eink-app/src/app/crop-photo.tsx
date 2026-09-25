@@ -539,6 +539,8 @@ export default function CropPhotoScreen() {
 						onValueChange={(value) => {
 							setAlgorithm(value as Spectra6Algorithm);
 						}}
+						style={styles.picker}
+						dropdownIconColor="#111111"
 					>
 						<Picker.Item
 							label="Floyd–Steinberg OKLab"
@@ -732,5 +734,8 @@ const styles = StyleSheet.create({
 		color: "#b00020",
 
 		textAlign: "center",
+	},
+	picker: {
+		color: "#111111",
 	},
 });

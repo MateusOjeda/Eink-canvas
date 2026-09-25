@@ -1,24 +1,26 @@
 {
   "expo": {
-    "name": "quadro-eink-app",
-    "slug": "quadro-eink-app",
+    "name": "quadro-eink-web",
+    "slug": "quadro-eink-web",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "quadroeinkapp",
+    "scheme": "quadroeinkweb",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
     },
     "android": {
-      "package": "com.mateusojeda.quadroeink",
-      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FBF7F3"
-      }
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
     },
     "web": {
+      "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -26,22 +28,15 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FBF7F3",
+          "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 220
+          "imageWidth": 76
         }
-      ],
-      "@react-native-google-signin/google-signin"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    },
-    "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "bbe4d6ad-b9a5-4a72-bc7e-2acb4e72156c"
-      }
     }
   }
 }

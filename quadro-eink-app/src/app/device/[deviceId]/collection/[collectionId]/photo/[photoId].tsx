@@ -22,7 +22,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 
 import { deletePhoto, getPhoto, setPhotoActive } from "@/firebase/photos";
 
-import { getStorageFileUrl } from "@/firebase/storage";
+import { getStorageAuthHeaders, getStorageFileUrl } from "@/firebase/storage";
 
 import type { Photo } from "@/types/photo";
 
@@ -45,15 +45,26 @@ export default function PhotoScreen() {
 
 	const [updatingActive, setUpdatingActive] = useState(false);
 
+	const [storageHeaders, setStorageHeaders] = useState<Record<
+		string,
+		string
+	> | null>(null);
+
 	useFocusEffect(
 		useCallback(() => {
 			const load = async () => {
 				{
 					try {
-						const [loadedPhoto, loadedDevice] = await Promise.all([
+						const [
+							loadedPhoto,
+							loadedDevice,
+							loadedStorageHeaders,
+						] = await Promise.all([
 							getPhoto(deviceId, collectionId, photoId),
 
 							getDevice(deviceId),
+
+							getStorageAuthHeaders(),
 						]);
 
 						if (!loadedPhoto) {
@@ -72,6 +83,7 @@ export default function PhotoScreen() {
 
 						setPhoto(loadedPhoto);
 						setDevice(loadedDevice);
+						setStorageHeaders(loadedStorageHeaders);
 					} catch (error) {
 						console.error("Erro ao carregar foto:", error);
 
@@ -192,6 +204,7 @@ export default function PhotoScreen() {
 					<Image
 						source={{
 							uri: previewUrl,
+							headers: storageHeaders ?? undefined,
 						}}
 						style={styles.preview}
 						resizeMode="contain"
