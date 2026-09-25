@@ -3,7 +3,11 @@ import {
 	isSuccessResponse,
 } from "@react-native-google-signin/google-signin";
 
-import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
+import {
+	GoogleAuthProvider,
+	signInWithCredential,
+	signOut,
+} from "firebase/auth";
 
 import { auth } from "@/firebase/config";
 
@@ -37,4 +41,9 @@ export async function signInWithGoogle() {
 	const credential = GoogleAuthProvider.credential(idToken);
 
 	return signInWithCredential(auth, credential);
+}
+
+export async function signOutUser() {
+	await GoogleSignin.signOut();
+	await signOut(auth);
 }

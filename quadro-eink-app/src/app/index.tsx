@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { router, useFocusEffect } from "expo-router";
+import { router, Stack, useFocusEffect } from "expo-router";
 
 import { Feather, Ionicons } from "@expo/vector-icons";
 
@@ -10,12 +10,14 @@ import { getDevices } from "@/firebase/devices";
 
 import { deleteDeviceWithContent } from "@/firebase/cascade";
 
+import { signOutUser } from "@/firebase/auth";
+
 import type { Device } from "@/types/device";
 
 export default function HomeScreen() {
 	const [devices, setDevices] = useState<Device[] | null>(null);
 
-	const hasHandledInitialLoad = useRef(false);
+	const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
 	useFocusEffect(
 		useCallback(() => {
@@ -23,22 +25,6 @@ export default function HomeScreen() {
 				const loadedDevices = await getDevices();
 
 				setDevices(loadedDevices);
-
-				// A entrada automática no único device
-				// só acontece na primeira carga da Home.
-				if (!hasHandledInitialLoad.current) {
-					hasHandledInitialLoad.current = true;
-
-					if (loadedDevices.length === 1) {
-						router.push({
-							pathname: "/device/[deviceId]",
-
-							params: {
-								deviceId: loadedDevices[0].id,
-							},
-						});
-					}
-				}
 			};
 
 			loadDevices();
@@ -78,94 +64,167 @@ export default function HomeScreen() {
 		]);
 	};
 
-	if (!devices) {
-		return <View style={styles.container} />;
-	}
+	const handleLogout = async () => {
+		try {
+			setProfileMenuOpen(false);
+
+			await signOutUser();
+		} catch (error) {
+			console.error("Erro ao sair:", error);
+
+			Alert.alert("Erro", "Não foi possível sair da conta.");
+		}
+	};
 
 	return (
-		<View style={styles.container}>
-			<Text style={styles.title}>Meus quadros</Text>
+		<>
+			<Stack.Screen
+				options={{
+					title: "Home",
+					headerShown: true,
 
-			<View style={styles.deviceList}>
-				{devices.map((device) => (
-					<View key={device.id} style={styles.deviceCard}>
+					headerRight: () => (
 						<Pressable
-							style={styles.deviceInfo}
+							hitSlop={12}
 							onPress={() =>
-								router.push({
-									pathname: "/device/[deviceId]",
-
-									params: {
-										deviceId: device.id,
-									},
-								})
+								setProfileMenuOpen((current) => !current)
 							}
 						>
-							<Text style={styles.deviceName}>{device.name}</Text>
+							<Ionicons
+								name="person-circle-outline"
+								size={30}
+								color="#666666"
+							/>
+						</Pressable>
+					),
+				}}
+			/>
 
-							<Text style={styles.deviceModel}>
-								{device.displayType === "spectra6-13.3"
-									? 'Spectra 6 — 13,3"'
-									: 'Spectra 6 — 7,3"'}
+			<Modal
+				visible={profileMenuOpen}
+				transparent
+				animationType="fade"
+				onRequestClose={() => setProfileMenuOpen(false)}
+			>
+				<Pressable
+					style={styles.modalOverlay}
+					onPress={() => setProfileMenuOpen(false)}
+				>
+					<View style={styles.profileMenu}>
+						<Pressable
+							style={styles.profileMenuItem}
+							onPress={handleLogout}
+						>
+							<Ionicons
+								name="log-out-outline"
+								size={20}
+								color="#444444"
+							/>
+
+							<Text style={styles.profileMenuText}>
+								Sair da conta
 							</Text>
 						</Pressable>
-
-						<View style={styles.deviceActions}>
-							<Pressable
-								hitSlop={10}
-								onPress={() =>
-									router.push({
-										pathname: "/device/[deviceId]/edit",
-
-										params: {
-											deviceId: device.id,
-										},
-									})
-								}
-							>
-								<Feather
-									name="edit"
-									size={20}
-									color="#666666"
-								/>
-							</Pressable>
-
-							<Pressable
-								hitSlop={10}
-								onPress={() => handleDeleteDevice(device)}
-							>
-								<Ionicons
-									name="trash-outline"
-									size={20}
-									color="#666666"
-								/>
-							</Pressable>
-						</View>
 					</View>
-				))}
-			</View>
+				</Pressable>
+			</Modal>
 
-			<Pressable
-				style={styles.addButton}
-				onPress={() => router.push("/register-device")}
-			>
-				<Text style={styles.addButtonText}>Adicionar dispositivo</Text>
-			</Pressable>
-		</View>
+			<View style={styles.container}>
+				<Text style={styles.sectionTitle}>Meus quadros</Text>
+
+				{devices && (
+					<View style={styles.deviceList}>
+						{devices.map((device) => (
+							<View key={device.id} style={styles.deviceCard}>
+								<Pressable
+									style={styles.deviceInfo}
+									onPress={() =>
+										router.push({
+											pathname: "/device/[deviceId]",
+
+											params: {
+												deviceId: device.id,
+											},
+										})
+									}
+								>
+									<Text style={styles.deviceName}>
+										{device.name}
+									</Text>
+
+									<Text style={styles.deviceModel}>
+										{device.displayType === "spectra6-13.3"
+											? 'Spectra 6 — 13,3"'
+											: 'Spectra 6 — 7,3"'}
+									</Text>
+								</Pressable>
+
+								<View style={styles.deviceActions}>
+									<Pressable
+										hitSlop={10}
+										onPress={() =>
+											router.push({
+												pathname:
+													"/device/[deviceId]/edit",
+
+												params: {
+													deviceId: device.id,
+												},
+											})
+										}
+									>
+										<Feather
+											name="edit"
+											size={20}
+											color="#666666"
+										/>
+									</Pressable>
+
+									<Pressable
+										hitSlop={10}
+										onPress={() =>
+											handleDeleteDevice(device)
+										}
+									>
+										<Ionicons
+											name="trash-outline"
+											size={20}
+											color="#666666"
+										/>
+									</Pressable>
+								</View>
+							</View>
+						))}
+					</View>
+				)}
+
+				<Pressable
+					style={styles.addButton}
+					onPress={() => router.push("/register-device")}
+				>
+					<Text style={styles.addButtonText}>
+						Adicionar dispositivo
+					</Text>
+				</Pressable>
+			</View>
+		</>
 	);
 }
 
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
+
 		backgroundColor: "#ffffff",
+
 		padding: 24,
 	},
 
-	title: {
-		fontSize: 26,
+	sectionTitle: {
+		fontSize: 22,
 		fontWeight: "700",
-		marginBottom: 24,
+
+		marginBottom: 20,
 	},
 
 	deviceList: {
@@ -175,7 +234,9 @@ const styles = StyleSheet.create({
 	deviceCard: {
 		borderWidth: 1,
 		borderColor: "#dddddd",
+
 		borderRadius: 12,
+
 		padding: 18,
 
 		flexDirection: "row",
@@ -193,27 +254,83 @@ const styles = StyleSheet.create({
 
 	deviceModel: {
 		marginTop: 4,
+
 		fontSize: 13,
+
 		color: "#666666",
 	},
 
 	deviceActions: {
 		flexDirection: "row",
 		alignItems: "center",
+
 		gap: 15,
 	},
 
 	addButton: {
 		marginTop: 20,
+
 		backgroundColor: "#111111",
+
 		borderRadius: 12,
+
 		paddingVertical: 16,
+
 		alignItems: "center",
 	},
 
 	addButtonText: {
 		color: "#ffffff",
+
 		fontSize: 16,
 		fontWeight: "600",
+	},
+
+	modalOverlay: {
+		flex: 1,
+
+		alignItems: "flex-end",
+
+		paddingTop: 88,
+		paddingRight: 12,
+	},
+
+	profileMenu: {
+		width: 180,
+
+		backgroundColor: "#ffffff",
+
+		borderWidth: 1,
+		borderColor: "#dddddd",
+
+		borderRadius: 10,
+
+		shadowColor: "#000000",
+
+		shadowOffset: {
+			width: 0,
+			height: 2,
+		},
+
+		shadowOpacity: 0.12,
+		shadowRadius: 6,
+
+		elevation: 5,
+	},
+
+	profileMenuItem: {
+		flexDirection: "row",
+		alignItems: "center",
+
+		gap: 10,
+
+		paddingHorizontal: 16,
+		paddingVertical: 14,
+	},
+
+	profileMenuText: {
+		fontSize: 15,
+
+		color: "#333333",
 	},
 });

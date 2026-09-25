@@ -22,7 +22,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 
 import { deletePhoto, getPhoto, setPhotoActive } from "@/firebase/photos";
 
-import { getStorageAuthHeaders, getStorageFileUrl } from "@/firebase/storage";
+import { getCachedStorageFileUri } from "@/firebase/storage";
 
 import type { Photo } from "@/types/photo";
 
@@ -45,26 +45,17 @@ export default function PhotoScreen() {
 
 	const [updatingActive, setUpdatingActive] = useState(false);
 
-	const [storageHeaders, setStorageHeaders] = useState<Record<
-		string,
-		string
-	> | null>(null);
+	const [previewUri, setPreviewUri] = useState<string | null>(null);
 
 	useFocusEffect(
 		useCallback(() => {
 			const load = async () => {
 				{
 					try {
-						const [
-							loadedPhoto,
-							loadedDevice,
-							loadedStorageHeaders,
-						] = await Promise.all([
+						const [loadedPhoto, loadedDevice] = await Promise.all([
 							getPhoto(deviceId, collectionId, photoId),
 
 							getDevice(deviceId),
-
-							getStorageAuthHeaders(),
 						]);
 
 						if (!loadedPhoto) {
@@ -81,9 +72,13 @@ export default function PhotoScreen() {
 							return;
 						}
 
+						const loadedPreviewUri = await getCachedStorageFileUri(
+							loadedPhoto.previewPath,
+						);
+
 						setPhoto(loadedPhoto);
 						setDevice(loadedDevice);
-						setStorageHeaders(loadedStorageHeaders);
+						setPreviewUri(loadedPreviewUri);
 					} catch (error) {
 						console.error("Erro ao carregar foto:", error);
 
@@ -179,8 +174,6 @@ export default function PhotoScreen() {
 	const orientationMismatch =
 		device !== null && photoOrientation !== device.orientation;
 
-	const previewUrl = getStorageFileUrl(photo.previewPath);
-
 	return (
 		<>
 			<Stack.Screen
@@ -201,14 +194,15 @@ export default function PhotoScreen() {
 
 			<View style={styles.container}>
 				<View style={styles.previewContainer}>
-					<Image
-						source={{
-							uri: previewUrl,
-							headers: storageHeaders ?? undefined,
-						}}
-						style={styles.preview}
-						resizeMode="contain"
-					/>
+					{previewUri && (
+						<Image
+							source={{
+								uri: previewUri,
+							}}
+							style={styles.preview}
+							resizeMode="contain"
+						/>
+					)}
 				</View>
 
 				{orientationMismatch && (

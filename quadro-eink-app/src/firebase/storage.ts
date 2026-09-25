@@ -1,8 +1,43 @@
 import { fetch } from "expo/fetch";
 import { File } from "expo-file-system";
 import { auth } from "./config";
+import { Paths } from "expo-file-system";
 
 const storageBucket = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
+
+export async function getCachedStorageFileUri(path: string): Promise<string> {
+	const authorization = await getAuthorizationHeader();
+
+	const url = getStorageFileUrl(path);
+
+	const safeFileName = path.replace(/[^a-zA-Z0-9._-]/g, "_");
+
+	const cachedFile = new File(Paths.cache, safeFileName);
+
+	if (cachedFile.exists) {
+		return cachedFile.uri;
+	}
+
+	const response = await fetch(url, {
+		method: "GET",
+
+		headers: {
+			Authorization: authorization,
+		},
+	});
+
+	if (!response.ok) {
+		const responseText = await response.text();
+
+		throw new Error(
+			`Erro ao baixar arquivo (${response.status}): ${responseText}`,
+		);
+	}
+
+	cachedFile.write(await response.bytes());
+
+	return cachedFile.uri;
+}
 
 async function getAuthorizationHeader(): Promise<string> {
 	const user = auth.currentUser;

@@ -21,7 +21,7 @@ import { getPhotoCollection } from "@/firebase/collections";
 
 import { getPhotos } from "@/firebase/photos";
 
-import { getStorageAuthHeaders, getStorageFileUrl } from "@/firebase/storage";
+import { getCachedStorageFileUri } from "@/firebase/storage";
 
 import type { PhotoCollection } from "@/types/photo-collection";
 
@@ -37,17 +37,17 @@ export default function CollectionScreen() {
 		collectionId: string;
 	}>();
 
-	const [storageHeaders, setStorageHeaders] = useState<Record<
-		string,
-		string
-	> | null>(null);
-
 	const [device, setDevice] = useState<Device | null>(null);
 
 	const [photoCollection, setPhotoCollection] =
 		useState<PhotoCollection | null>(null);
 
-	const [photos, setPhotos] = useState<Photo[]>([]);
+	const [photos, setPhotos] = useState<
+		{
+			photo: Photo;
+			thumbnailUri: string;
+		}[]
+	>([]);
 
 	const [loading, setLoading] = useState(true);
 
@@ -55,25 +55,24 @@ export default function CollectionScreen() {
 		useCallback(() => {
 			const load = async () => {
 				try {
-					const [
-						loadedDevice,
-						loadedCollection,
-						loadedPhotos,
-						loadedStorageHeaders,
-					] = await Promise.all([
-						getDevice(deviceId),
+					const [loadedDevice, loadedCollection, loadedPhotos] =
+						await Promise.all([
+							getDevice(deviceId),
+							getPhotoCollection(deviceId, collectionId),
+							getPhotos(deviceId, collectionId),
+						]);
 
-						getPhotoCollection(deviceId, collectionId),
-
-						getPhotos(deviceId, collectionId),
-
-						getStorageAuthHeaders(),
-					]);
-
+					const loadedPhotosWithThumbnails = await Promise.all(
+						loadedPhotos.map(async (photo) => ({
+							photo,
+							thumbnailUri: await getCachedStorageFileUri(
+								photo.thumbnailPath,
+							),
+						})),
+					);
 					setDevice(loadedDevice);
 					setPhotoCollection(loadedCollection);
-					setPhotos(loadedPhotos);
-					setStorageHeaders(loadedStorageHeaders);
+					setPhotos(loadedPhotosWithThumbnails);
 				} catch (error) {
 					console.error("Erro ao carregar coleção:", error);
 				} finally {
@@ -104,7 +103,7 @@ export default function CollectionScreen() {
 			<View style={styles.container}>
 				<FlatList
 					data={photos}
-					keyExtractor={(photo) => photo.id}
+					keyExtractor={(item) => item.photo.id}
 					numColumns={3}
 					contentContainerStyle={styles.photoList}
 					columnWrapperStyle={
@@ -117,10 +116,8 @@ export default function CollectionScreen() {
 							</Text>
 						</View>
 					}
-					renderItem={({ item: photo }) => {
-						const thumbnailUrl = getStorageFileUrl(
-							photo.thumbnailPath,
-						);
+					renderItem={({ item }) => {
+						const { photo, thumbnailUri } = item;
 
 						const photoOrientation =
 							photo.height > photo.width
@@ -149,8 +146,7 @@ export default function CollectionScreen() {
 							>
 								<Image
 									source={{
-										uri: thumbnailUrl,
-										headers: storageHeaders ?? undefined,
+										uri: thumbnailUri,
 									}}
 									style={styles.thumbnail}
 									resizeMode="cover"

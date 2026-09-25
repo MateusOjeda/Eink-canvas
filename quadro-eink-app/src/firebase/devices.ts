@@ -81,12 +81,6 @@ export async function createDevice(device: Device): Promise<void> {
 
 	const deviceRef = doc(db, "devices", device.id);
 
-	const existingDevice = await getDoc(deviceRef);
-
-	if (existingDevice.exists()) {
-		throw new Error("Já existe um dispositivo com esse ID.");
-	}
-
 	await setDoc(deviceRef, {
 		name: device.name,
 		displayType: device.displayType,
@@ -95,7 +89,6 @@ export async function createDevice(device: Device): Promise<void> {
 		ownerUid: user.uid,
 	});
 }
-
 export async function updateDevice(
 	deviceId: string,
 	data: {
