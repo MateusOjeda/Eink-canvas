@@ -17,7 +17,7 @@ import { deleteStorageFile, uploadLocalFile } from "./storage";
 
 import { auth, db } from "./config";
 
-import type { Photo } from "@/types/photo";
+import type { Photo, TemporaryPhoto } from "@/types/photo";
 
 type SavePhotoParams = {
 	deviceId: string;
@@ -44,6 +44,54 @@ type UploadTemporaryPhotoParams = {
 
 	expiresAt: Date;
 };
+
+export async function getTemporaryPhotos(
+	deviceId: string,
+): Promise<TemporaryPhoto[]> {
+	const photosRef = collection(db, "devices", deviceId, "temporaryPhotos");
+
+	const snapshot = await getDocs(
+		query(photosRef, orderBy("createdAt", "desc")),
+	);
+
+	return snapshot.docs.map((document) => {
+		const data = document.data();
+
+		return {
+			id: document.id,
+
+			createdByUid: data.createdByUid,
+
+			previewPath: data.previewPath,
+			epaperFilePath: data.epaperFilePath,
+
+			width: data.width,
+			height: data.height,
+
+			expiresAt: data.expiresAt.toDate(),
+		};
+	});
+}
+
+export async function deleteTemporaryPhoto(
+	deviceId: string,
+	photo: TemporaryPhoto,
+): Promise<void> {
+	/*
+	 * Primeiro apagamos os arquivos.
+	 *
+	 * Só depois removemos o documento,
+	 * para não perdermos os paths caso
+	 * algum delete falhe.
+	 */
+	await Promise.all([
+		deleteStorageFile(photo.previewPath),
+
+		deleteStorageFile(photo.epaperFilePath),
+	]);
+
+	await deleteDoc(doc(db, "devices", deviceId, "temporaryPhotos", photo.id));
+}
 
 export async function getPhotos(
 	deviceId: string,
