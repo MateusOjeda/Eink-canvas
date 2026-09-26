@@ -136,8 +136,7 @@ export default function DeviceScreen() {
 		<>
 			<Stack.Screen
 				options={{
-					title: device?.name ?? "Quadro",
-
+					title: device ? `${device.name}` : "",
 					headerRight: () => (
 						<Pressable
 							hitSlop={12}
@@ -163,8 +162,6 @@ export default function DeviceScreen() {
 			/>
 
 			<View style={styles.container}>
-				<Text style={styles.title}>Coleções</Text>
-
 				<View style={styles.list}>
 					{collections.map((photoCollection) => (
 						<View
@@ -323,9 +320,9 @@ const styles = StyleSheet.create({
 
 	addButton: {
 		marginTop: 20,
-		backgroundColor: "#111111",
+		backgroundColor: "#6b6b6b",
 		borderRadius: 12,
-		paddingVertical: 16,
+		paddingVertical: 14,
 		alignItems: "center",
 	},
 

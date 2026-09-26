@@ -64,7 +64,16 @@ export default function RootLayout() {
 		<GestureHandlerRootView style={styles.root}>
 			<NavigationBar hidden />
 
-			<Stack>
+			<Stack
+				screenOptions={{
+					animation: "none",
+					headerTitleStyle: {
+						fontSize: 20,
+						fontWeight: "700",
+						color: "#4e4e4e",
+					},
+				}}
+			>
 				<Stack.Screen
 					name="login"
 					options={{
@@ -75,8 +84,42 @@ export default function RootLayout() {
 				<Stack.Screen
 					name="index"
 					options={{
-						title: "Quadro",
-						headerShown: false,
+						title: "Meus quadros",
+					}}
+				/>
+
+				<Stack.Screen
+					name="register-device"
+					options={{
+						title: "Adicionar quadro",
+					}}
+				/>
+
+				<Stack.Screen
+					name="device/[deviceId]"
+					options={{
+						title: "",
+					}}
+				/>
+
+				<Stack.Screen
+					name="device/[deviceId]/edit"
+					options={{
+						title: "Editar quadro",
+					}}
+				/>
+
+				<Stack.Screen
+					name="device/[deviceId]/collection/[collectionId]"
+					options={{
+						title: "",
+					}}
+				/>
+
+				<Stack.Screen
+					name="device/[deviceId]/collection/[collectionId]/photo/[photoId]"
+					options={{
+						title: "",
 					}}
 				/>
 
@@ -95,13 +138,6 @@ export default function RootLayout() {
 				/>
 
 				<Stack.Screen
-					name="settings"
-					options={{
-						title: "Configurações",
-					}}
-				/>
-
-				<Stack.Screen
 					name="preview-photo"
 					options={{
 						title: "Prévia",
@@ -109,9 +145,9 @@ export default function RootLayout() {
 				/>
 
 				<Stack.Screen
-					name="device/[deviceId]"
+					name="settings"
 					options={{
-						title: "Quadro",
+						title: "Configurações",
 					}}
 				/>
 			</Stack>
@@ -126,6 +162,7 @@ const styles = StyleSheet.create({
 
 	loading: {
 		flex: 1,
+
 		alignItems: "center",
 		justifyContent: "center",
 	},

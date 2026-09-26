@@ -659,11 +659,11 @@ const styles = StyleSheet.create({
 	},
 
 	continueButton: {
-		backgroundColor: "#111111",
+		backgroundColor: "#6b6b6b",
 
 		borderRadius: 12,
 
-		paddingVertical: 16,
+		paddingVertical: 14,
 
 		alignItems: "center",
 

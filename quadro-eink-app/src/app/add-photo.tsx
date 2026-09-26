@@ -215,8 +215,8 @@ const styles = StyleSheet.create({
 	},
 
 	orientationButtonSelected: {
-		backgroundColor: "#111111",
-		borderColor: "#111111",
+		backgroundColor: "#6b6b6b",
+		borderColor: "#6b6b6b",
 	},
 
 	orientationText: {
@@ -229,24 +229,24 @@ const styles = StyleSheet.create({
 	},
 
 	secondaryButton: {
-		paddingVertical: 16,
+		paddingVertical: 14,
 		borderRadius: 12,
 		borderWidth: 1,
-		borderColor: "#111111",
+		borderColor: "#6b6b6b",
 		alignItems: "center",
 		marginBottom: 10,
 	},
 
 	secondaryButtonText: {
-		color: "#111111",
+		color: "#6b6b6b",
 		fontSize: 16,
 		fontWeight: "600",
 	},
 
 	button: {
-		paddingVertical: 16,
+		paddingVertical: 14,
 		borderRadius: 12,
-		backgroundColor: "#111111",
+		backgroundColor: "#6b6b6b",
 		alignItems: "center",
 	},
 

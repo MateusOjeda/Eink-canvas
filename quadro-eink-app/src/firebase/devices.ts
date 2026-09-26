@@ -72,7 +72,9 @@ export async function getDevice(deviceId: string): Promise<Device | null> {
 	} as Device;
 }
 
-export async function createDevice(device: Device): Promise<void> {
+export async function createDevice(
+	device: Omit<Device, "ownerUid">,
+): Promise<void> {
 	const user = auth.currentUser;
 
 	if (!user) {
@@ -89,6 +91,7 @@ export async function createDevice(device: Device): Promise<void> {
 		ownerUid: user.uid,
 	});
 }
+
 export async function updateDevice(
 	deviceId: string,
 	data: {

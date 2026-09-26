@@ -80,9 +80,6 @@ export default function HomeScreen() {
 		<>
 			<Stack.Screen
 				options={{
-					title: "Home",
-					headerShown: true,
-
 					headerRight: () => (
 						<Pressable
 							hitSlop={12}
@@ -130,8 +127,6 @@ export default function HomeScreen() {
 			</Modal>
 
 			<View style={styles.container}>
-				<Text style={styles.sectionTitle}>Meus quadros</Text>
-
 				{devices && (
 					<View style={styles.deviceList}>
 						{devices.map((device) => (
@@ -270,11 +265,11 @@ const styles = StyleSheet.create({
 	addButton: {
 		marginTop: 20,
 
-		backgroundColor: "#111111",
+		backgroundColor: "#6b6b6b",
 
 		borderRadius: 12,
 
-		paddingVertical: 16,
+		paddingVertical: 14,
 
 		alignItems: "center",
 	},

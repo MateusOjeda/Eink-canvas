@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
 	},
 
 	secondaryButton: {
-		paddingVertical: 16,
+		paddingVertical: 14,
 
 		borderWidth: 1,
 
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
 	},
 
 	secondaryButtonText: {
-		color: "#111111",
+		color: "#6b6b6b",
 
 		fontSize: 16,
 
@@ -292,9 +292,9 @@ const styles = StyleSheet.create({
 	},
 
 	primaryButton: {
-		paddingVertical: 16,
+		paddingVertical: 14,
 
-		backgroundColor: "#111111",
+		backgroundColor: "#6b6b6b",
 
 		borderRadius: 12,
 

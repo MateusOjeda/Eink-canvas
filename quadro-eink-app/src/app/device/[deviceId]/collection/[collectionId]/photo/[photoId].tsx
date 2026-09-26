@@ -326,6 +326,8 @@ const styles = StyleSheet.create({
 	option: {
 		marginTop: 24,
 
+		marginBottom: 16,
+
 		flexDirection: "row",
 
 		alignItems: "center",

@@ -96,7 +96,7 @@ export default function CollectionScreen() {
 		<>
 			<Stack.Screen
 				options={{
-					title: photoCollection?.name ?? "Coleção",
+					title: device ? `${photoCollection?.name}` : "",
 				}}
 			/>
 
@@ -284,11 +284,11 @@ const styles = StyleSheet.create({
 
 		marginBottom: 24,
 
-		backgroundColor: "#111111",
+		backgroundColor: "#6b6b6b",
 
 		borderRadius: 12,
 
-		paddingVertical: 16,
+		paddingVertical: 14,
 
 		alignItems: "center",
 	},
@@ -299,5 +299,11 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 
 		fontWeight: "600",
+	},
+
+	title: {
+		fontSize: 24,
+		fontWeight: "700",
+		marginBottom: 20,
 	},
 });
