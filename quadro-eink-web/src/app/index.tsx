@@ -969,7 +969,7 @@ export default function HomeScreen() {
 											<Pressable
 												style={styles.controlButton}
 												onPress={() =>
-													moveCrop(0, MOVE_STEP)
+													moveCrop(0, -MOVE_STEP)
 												}
 											>
 												<Text
@@ -990,7 +990,7 @@ export default function HomeScreen() {
 											<Pressable
 												style={styles.controlButton}
 												onPress={() =>
-													moveCrop(MOVE_STEP, 0)
+													moveCrop(-MOVE_STEP, 0)
 												}
 											>
 												<Text
@@ -1018,7 +1018,7 @@ export default function HomeScreen() {
 											<Pressable
 												style={styles.controlButton}
 												onPress={() =>
-													moveCrop(-MOVE_STEP, 0)
+													moveCrop(MOVE_STEP, 0)
 												}
 											>
 												<Text
@@ -1039,7 +1039,7 @@ export default function HomeScreen() {
 											<Pressable
 												style={styles.controlButton}
 												onPress={() =>
-													moveCrop(0, -MOVE_STEP)
+													moveCrop(0, MOVE_STEP)
 												}
 											>
 												<Text
