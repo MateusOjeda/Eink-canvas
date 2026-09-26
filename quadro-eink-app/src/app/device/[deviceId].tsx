@@ -143,7 +143,7 @@ export default function DeviceScreen() {
 							onPress={() =>
 								router.push({
 									pathname:
-										"/device/[deviceId]/temporary-photo",
+										"/device/[deviceId]/temporary-photos",
 
 									params: {
 										deviceId,

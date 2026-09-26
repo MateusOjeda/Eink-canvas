@@ -124,6 +124,20 @@ export default function RootLayout() {
 				/>
 
 				<Stack.Screen
+					name="device/[deviceId]/temporary-photos"
+					options={{
+						title: "Fotos temporárias",
+					}}
+				/>
+
+				<Stack.Screen
+					name="device/[deviceId]/temporary-photo"
+					options={{
+						title: "Adicionar foto temporária",
+					}}
+				/>
+
+				<Stack.Screen
 					name="add-photo"
 					options={{
 						title: "Adicionar foto",

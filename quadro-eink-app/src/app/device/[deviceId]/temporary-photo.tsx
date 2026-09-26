@@ -293,12 +293,6 @@ export default function TemporaryPhotoScreen() {
 
 	return (
 		<>
-			<Stack.Screen
-				options={{
-					title: "Foto temporária",
-				}}
-			/>
-
 			<View style={styles.container}>
 				{previewUri ? (
 					<View style={styles.imageContainer}>
