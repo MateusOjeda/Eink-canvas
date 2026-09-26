@@ -14,3 +14,17 @@ export type Photo = {
 
 	description?: string;
 };
+
+export type TemporaryPhoto = {
+	id: string;
+
+	createdByUid: string;
+
+	previewPath: string;
+	epaperFilePath: string;
+
+	width: number;
+	height: number;
+
+	expiresAt: Date;
+};

@@ -45,13 +45,19 @@ function clamp(value: number, min: number, max: number) {
 export default function CropPhotoScreen() {
 	const params = useLocalSearchParams<{
 		deviceId: string;
-		collectionId: string;
+
+		collectionId?: string;
+
+		mode?: "collection" | "temporary";
 
 		fileName: string;
 		imageWidth: string;
 		imageHeight: string;
+
 		orientation: DisplayOrientation;
 	}>();
+
+	const photoMode = params.mode ?? "collection";
 
 	/*
 	 * Reconstrói a URI da foto que copiamos
@@ -391,7 +397,7 @@ export default function CropPhotoScreen() {
 	 * ↓
 	 * arquivo .bin
 	 * ↓
-	 * preview-photo
+	 * preview-photo OU temporary-photo
 	 */
 	const continueWithCrop = async () => {
 		setIsProcessing(true);
@@ -412,6 +418,42 @@ export default function CropPhotoScreen() {
 				croppedImage.uri,
 				algorithm,
 			);
+
+			/*
+			 * Foto temporária:
+			 *
+			 * não precisamos gerar thumbnail
+			 * e não passamos pela tela
+			 * preview-photo.
+			 */
+			if (photoMode === "temporary") {
+				setIsProcessing(false);
+
+				router.dismissTo({
+					pathname: "/device/[deviceId]/temporary-photo",
+
+					params: {
+						deviceId: params.deviceId,
+
+						previewFileName: Paths.basename(spectraImage.uri),
+
+						binFileName: Paths.basename(spectraImage.binUri),
+
+						imageWidth: spectraImage.width.toString(),
+
+						imageHeight: spectraImage.height.toString(),
+					},
+				});
+
+				return;
+			}
+
+			/*
+			 * Foto normal de coleção.
+			 */
+			if (!params.collectionId) {
+				throw new Error("Collection ID não informado.");
+			}
 
 			const thumbnail = await createThumbnail(
 				croppedImage.uri,
@@ -454,7 +496,6 @@ export default function CropPhotoScreen() {
 	 * depois que TODOS os hooks acima
 	 * já foram executados.
 	 */
-
 	if (deviceLoadError) {
 		return (
 			<View style={styles.loadingContainer}>
@@ -735,6 +776,7 @@ const styles = StyleSheet.create({
 
 		textAlign: "center",
 	},
+
 	picker: {
 		color: "#111111",
 	},

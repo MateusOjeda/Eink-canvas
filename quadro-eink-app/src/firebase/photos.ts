@@ -1,6 +1,7 @@
 import {
 	collection,
 	deleteDoc,
+	deleteField,
 	doc,
 	getDoc,
 	getDocs,
@@ -8,13 +9,13 @@ import {
 	query,
 	serverTimestamp,
 	setDoc,
+	Timestamp,
 	updateDoc,
-	deleteField,
 } from "firebase/firestore";
 
 import { deleteStorageFile, uploadLocalFile } from "./storage";
 
-import { db } from "./config";
+import { auth, db } from "./config";
 
 import type { Photo } from "@/types/photo";
 
@@ -30,6 +31,18 @@ type SavePhotoParams = {
 	height: number;
 
 	description?: string;
+};
+
+type UploadTemporaryPhotoParams = {
+	deviceId: string;
+
+	previewUri: string;
+	binUri: string;
+
+	width: number;
+	height: number;
+
+	expiresAt: Date;
 };
 
 export async function getPhotos(
@@ -54,26 +67,6 @@ export async function getPhotos(
 
 		...document.data(),
 	})) as Photo[];
-}
-
-function getOriginalExtension(uri: string): string {
-	const cleanUri = uri.split("?")[0];
-
-	const lastDot = cleanUri.lastIndexOf(".");
-
-	if (lastDot === -1) {
-		return ".jpg";
-	}
-
-	const extension = cleanUri.substring(lastDot).toLowerCase();
-
-	if (
-		[".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"].includes(extension)
-	) {
-		return extension;
-	}
-
-	return ".jpg";
 }
 
 export async function savePhoto({
@@ -121,7 +114,7 @@ export async function savePhoto({
 	 * Fazemos primeiro todos os uploads.
 	 *
 	 * O documento do Firestore só será
-	 * criado se os quatro terminarem.
+	 * criado se os três terminarem.
 	 */
 	await Promise.all([
 		uploadLocalFile(previewUri, previewPath, "image/png"),
@@ -157,6 +150,75 @@ export async function savePhoto({
 	});
 
 	return imageId;
+}
+
+export async function uploadTemporaryPhoto({
+	deviceId,
+
+	previewUri,
+	binUri,
+
+	width,
+	height,
+
+	expiresAt,
+}: UploadTemporaryPhotoParams): Promise<string> {
+	const user = auth.currentUser;
+
+	if (!user) {
+		throw new Error("Usuário não autenticado.");
+	}
+
+	/*
+	 * Gera um ID do Firestore,
+	 * mas ainda NÃO cria o documento.
+	 */
+	const photoRef = doc(
+		collection(db, "devices", deviceId, "temporaryPhotos"),
+	);
+
+	const photoId = photoRef.id;
+
+	/*
+	 * A estrutura do Storage precisa respeitar:
+	 *
+	 * devices/{deviceId}/temporaryPhotos/{uid}/{fileName}
+	 *
+	 * pois é esse o formato usado nas Storage Rules.
+	 */
+	const basePath = `devices/${deviceId}` + `/temporaryPhotos/${user.uid}`;
+
+	const previewPath = `${basePath}/${photoId}-preview.png`;
+
+	const epaperFilePath = `${basePath}/${photoId}-display.bin`;
+
+	/*
+	 * Primeiro enviamos os arquivos.
+	 *
+	 * O documento do Firestore só é criado
+	 * quando os dois uploads terminarem.
+	 */
+	await Promise.all([
+		uploadLocalFile(previewUri, previewPath, "image/png"),
+
+		uploadLocalFile(binUri, epaperFilePath, "application/octet-stream"),
+	]);
+
+	await setDoc(photoRef, {
+		createdByUid: user.uid,
+
+		previewPath,
+		epaperFilePath,
+
+		width,
+		height,
+
+		expiresAt: Timestamp.fromDate(expiresAt),
+
+		createdAt: serverTimestamp(),
+	});
+
+	return photoId;
 }
 
 export async function getPhoto(

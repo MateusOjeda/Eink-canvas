@@ -9,17 +9,21 @@ import { DisplayOrientation } from "@/types/display";
 import { getDevice } from "@/firebase/devices";
 
 export default function AddPhotoScreen() {
-	const { deviceId, collectionId } = useLocalSearchParams<{
+	const { deviceId, collectionId, mode } = useLocalSearchParams<{
 		deviceId: string;
-		collectionId: string;
+		collectionId?: string;
+		mode?: "collection" | "temporary";
 	}>();
+
+	const photoMode = mode ?? "collection";
 
 	const [imageUri, setImageUri] = useState<string | null>(null);
 	const [imageWidth, setImageWidth] = useState<number | null>(null);
 	const [imageHeight, setImageHeight] = useState<number | null>(null);
 
-	const [orientation, setOrientation] =
-		useState<DisplayOrientation>("portrait");
+	const [orientation, setOrientation] = useState<DisplayOrientation | null>(
+		null,
+	);
 
 	useEffect(() => {
 		const loadDevice = async () => {
@@ -62,19 +66,28 @@ export default function AddPhotoScreen() {
 	};
 
 	const continueToCrop = () => {
-		if (!imageUri || !imageWidth || !imageHeight) {
+		if (!imageUri || !imageWidth || !imageHeight || !orientation) {
 			return;
 		}
 
 		router.push({
 			pathname: "/crop-photo",
+
 			params: {
 				deviceId,
-				collectionId,
+
+				...(collectionId
+					? {
+							collectionId,
+						}
+					: {}),
+
+				mode: photoMode,
 
 				fileName: Paths.basename(imageUri),
 				imageWidth: imageWidth.toString(),
 				imageHeight: imageHeight.toString(),
+
 				orientation,
 			},
 		});
@@ -98,24 +111,46 @@ export default function AddPhotoScreen() {
 				)}
 			</View>
 
-			{imageUri && (
+			{imageUri && orientation && (
 				<View style={styles.orientationSection}>
-					<Text style={styles.label}>Orientação no quadro</Text>
+					<Text style={styles.label}>
+						{photoMode === "temporary"
+							? "Orientação do quadro"
+							: "Orientação no quadro"}
+					</Text>
 
 					<View style={styles.orientationButtons}>
 						<Pressable
+							disabled={
+								photoMode === "temporary" &&
+								orientation !== "portrait"
+							}
 							style={[
 								styles.orientationButton,
+
 								orientation === "portrait" &&
 									styles.orientationButtonSelected,
+
+								photoMode === "temporary" &&
+									orientation !== "portrait" &&
+									styles.orientationButtonDisabled,
 							]}
-							onPress={() => setOrientation("portrait")}
+							onPress={() => {
+								if (photoMode === "collection") {
+									setOrientation("portrait");
+								}
+							}}
 						>
 							<Text
 								style={[
 									styles.orientationText,
+
 									orientation === "portrait" &&
 										styles.orientationTextSelected,
+
+									photoMode === "temporary" &&
+										orientation !== "portrait" &&
+										styles.orientationTextDisabled,
 								]}
 							>
 								Retrato
@@ -123,18 +158,36 @@ export default function AddPhotoScreen() {
 						</Pressable>
 
 						<Pressable
+							disabled={
+								photoMode === "temporary" &&
+								orientation !== "landscape"
+							}
 							style={[
 								styles.orientationButton,
+
 								orientation === "landscape" &&
 									styles.orientationButtonSelected,
+
+								photoMode === "temporary" &&
+									orientation !== "landscape" &&
+									styles.orientationButtonDisabled,
 							]}
-							onPress={() => setOrientation("landscape")}
+							onPress={() => {
+								if (photoMode === "collection") {
+									setOrientation("landscape");
+								}
+							}}
 						>
 							<Text
 								style={[
 									styles.orientationText,
+
 									orientation === "landscape" &&
 										styles.orientationTextSelected,
+
+									photoMode === "temporary" &&
+										orientation !== "landscape" &&
+										styles.orientationTextDisabled,
 								]}
 							>
 								Paisagem
@@ -254,5 +307,13 @@ const styles = StyleSheet.create({
 		color: "#ffffff",
 		fontSize: 16,
 		fontWeight: "600",
+	},
+	orientationButtonDisabled: {
+		backgroundColor: "#f5f5f5",
+		borderColor: "#dddddd",
+	},
+
+	orientationTextDisabled: {
+		color: "#aaaaaa",
 	},
 });
