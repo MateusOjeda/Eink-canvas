@@ -4,7 +4,6 @@ import {
 	ActivityIndicator,
 	Alert,
 	Image,
-	Modal,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -46,7 +45,13 @@ type ProcessedTemporaryPhoto = {
 	height: number;
 };
 
-const MINUTE_STEP = 5;
+const DURATION_OPTIONS = [
+	{ label: "30 min", minutes: 30 },
+	{ label: "1 hora", minutes: 60 },
+	{ label: "2 horas", minutes: 120 },
+	{ label: "3 horas", minutes: 180 },
+] as const;
+
 const MOVE_STEP = 15;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
@@ -54,55 +59,6 @@ const ZOOM_STEP = 0.1;
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
-}
-
-function createDefaultExpiration(): Date {
-	const date = new Date();
-
-	date.setHours(date.getHours() + 1);
-
-	const minutes = Math.ceil(date.getMinutes() / MINUTE_STEP) * MINUTE_STEP;
-
-	date.setMinutes(minutes, 0, 0);
-
-	return date;
-}
-
-function startOfDay(date: Date): Date {
-	const result = new Date(date);
-
-	result.setHours(0, 0, 0, 0);
-
-	return result;
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-	return (
-		a.getFullYear() === b.getFullYear() &&
-		a.getMonth() === b.getMonth() &&
-		a.getDate() === b.getDate()
-	);
-}
-
-function getDateLabel(date: Date): string {
-	const today = new Date();
-
-	const tomorrow = new Date();
-	tomorrow.setDate(tomorrow.getDate() + 1);
-
-	if (isSameDay(date, today)) {
-		return "Hoje";
-	}
-
-	if (isSameDay(date, tomorrow)) {
-		return "Amanhã";
-	}
-
-	const value = date.toLocaleDateString("pt-BR", {
-		weekday: "long",
-	});
-
-	return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function getDisplayName(device: AuthorizedDevice): string {
@@ -267,13 +223,7 @@ export default function HomeScreen() {
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [isSending, setIsSending] = useState(false);
 
-	const [expiresAt, setExpiresAt] = useState<Date | null>(null);
-
-	const [isPickerOpen, setIsPickerOpen] = useState(false);
-
-	const [draftExpiresAt, setDraftExpiresAt] = useState<Date>(
-		createDefaultExpiration,
-	);
+	const [durationMinutes, setDurationMinutes] = useState(60);
 
 	const [sendError, setSendError] = useState<string | null>(null);
 
@@ -358,7 +308,7 @@ export default function HomeScreen() {
 		setProcessedPhoto(null);
 		setFlowStep("pick");
 		resetCrop();
-		setExpiresAt(null);
+		setDurationMinutes(60);
 	};
 
 	const selectDevice = (device: AuthorizedDevice) => {
@@ -534,106 +484,8 @@ export default function HomeScreen() {
 		}
 	};
 
-	const openExpirationPicker = () => {
-		setDraftExpiresAt(
-			expiresAt ? new Date(expiresAt) : createDefaultExpiration(),
-		);
-
-		setIsPickerOpen(true);
-	};
-
-	const selectToday = () => {
-		const today = new Date();
-
-		const next = new Date(draftExpiresAt);
-
-		next.setFullYear(
-			today.getFullYear(),
-			today.getMonth(),
-			today.getDate(),
-		);
-
-		setDraftExpiresAt(next);
-	};
-
-	const selectTomorrow = () => {
-		const tomorrow = new Date();
-
-		tomorrow.setDate(tomorrow.getDate() + 1);
-
-		const next = new Date(draftExpiresAt);
-
-		next.setFullYear(
-			tomorrow.getFullYear(),
-			tomorrow.getMonth(),
-			tomorrow.getDate(),
-		);
-
-		setDraftExpiresAt(next);
-	};
-
-	const changeDay = (amount: number) => {
-		const next = new Date(draftExpiresAt);
-
-		next.setDate(next.getDate() + amount);
-
-		if (startOfDay(next).getTime() < startOfDay(new Date()).getTime()) {
-			return;
-		}
-
-		setDraftExpiresAt(next);
-	};
-
-	const changeHour = (amount: number) => {
-		const next = new Date(draftExpiresAt);
-
-		next.setHours(next.getHours() + amount);
-
-		if (startOfDay(next).getTime() < startOfDay(new Date()).getTime()) {
-			return;
-		}
-
-		setDraftExpiresAt(next);
-	};
-
-	const changeMinute = (amount: number) => {
-		const next = new Date(draftExpiresAt);
-
-		next.setMinutes(next.getMinutes() + amount);
-
-		if (startOfDay(next).getTime() < startOfDay(new Date()).getTime()) {
-			return;
-		}
-
-		setDraftExpiresAt(next);
-	};
-
-	const confirmExpiration = () => {
-		if (draftExpiresAt.getTime() <= Date.now()) {
-			return;
-		}
-
-		setExpiresAt(new Date(draftExpiresAt));
-
-		setSendError(null);
-
-		setIsPickerOpen(false);
-	};
-
 	const sendTemporaryPhoto = async () => {
 		if (!selectedDevice || !processedPhoto) {
-			return;
-		}
-
-		if (!expiresAt) {
-			setSendError("É preciso definir a data e a hora antes de enviar.");
-
-			return;
-		}
-
-		if (expiresAt.getTime() <= Date.now()) {
-			setSendError("Escolha uma data e um horário no futuro.");
-
 			return;
 		}
 
@@ -650,24 +502,18 @@ export default function HomeScreen() {
 				width: processedPhoto.width,
 				height: processedPhoto.height,
 
-				expiresAt,
+				durationMinutes,
 			});
 
 			setFlowStep("success");
 		} catch (error) {
-			console.error("Erro ao enviar foto temporária:", error);
+			console.error("Erro ao enviar foto agendada:", error);
 
 			setSendError("Não foi possível enviar a foto. Tente novamente.");
 		} finally {
 			setIsSending(false);
 		}
 	};
-
-	const previousDayDisabled =
-		startOfDay(draftExpiresAt).getTime() <=
-		startOfDay(new Date()).getTime();
-
-	const draftIsValid = draftExpiresAt.getTime() > Date.now();
 
 	if (loading) {
 		return (
@@ -815,7 +661,7 @@ export default function HomeScreen() {
 						<Text style={styles.title}>Enviar foto</Text>
 
 						<Text style={styles.description}>
-							Envie uma foto temporária para{" "}
+							Envie uma foto agendada para{" "}
 							<Text style={styles.descriptionStrong}>
 								{selectedDevice.name}
 							</Text>
@@ -1114,38 +960,46 @@ export default function HomeScreen() {
 									</Text>
 								</View>
 
-								<Text style={styles.sectionTitle}>
-									Exibir até
+								<Text style={styles.sectionTitle}>Duração</Text>
+
+								<Text style={styles.helperText}>
+									A duração começa quando a foto for exibida
+									no quadro.
 								</Text>
 
-								<Pressable
-									style={styles.dateButton}
-									onPress={openExpirationPicker}
-								>
-									<View>
-										<Text style={styles.datePlaceholder}>
-											{expiresAt
-												? expiresAt.toLocaleDateString(
-														"pt-BR",
-													)
-												: "Definir data e hora"}
-										</Text>
+								<View style={styles.durationOptions}>
+									{DURATION_OPTIONS.map((option) => {
+										const selected =
+											durationMinutes === option.minutes;
 
-										<Text style={styles.dateHint}>
-											{expiresAt
-												? expiresAt.toLocaleTimeString(
-														"pt-BR",
-														{
-															hour: "2-digit",
-															minute: "2-digit",
-														},
-													)
-												: "Ainda não definido"}
-										</Text>
-									</View>
-
-									<Text style={styles.dateArrow}>›</Text>
-								</Pressable>
+										return (
+											<Pressable
+												key={option.minutes}
+												style={[
+													styles.durationOption,
+													selected &&
+														styles.durationOptionSelected,
+												]}
+												onPress={() => {
+													setDurationMinutes(
+														option.minutes,
+													);
+													setSendError(null);
+												}}
+											>
+												<Text
+													style={[
+														styles.durationOptionText,
+														selected &&
+															styles.durationOptionTextSelected,
+													]}
+												>
+													{option.label}
+												</Text>
+											</Pressable>
+										);
+									})}
+								</View>
 
 								<Pressable
 									disabled={isSending}
@@ -1159,7 +1013,7 @@ export default function HomeScreen() {
 										<ActivityIndicator color="#ffffff" />
 									) : (
 										<Text style={styles.primaryButtonText}>
-											Enviar foto temporária
+											Enviar foto agendada
 										</Text>
 									)}
 								</Pressable>
@@ -1185,7 +1039,7 @@ export default function HomeScreen() {
 								</Text>
 
 								<Text style={styles.successDescription}>
-									A foto temporária foi enviada para{" "}
+									A foto agendada foi enviada para{" "}
 									<Text style={styles.descriptionStrong}>
 										{selectedDevice.name}
 									</Text>
@@ -1216,244 +1070,6 @@ export default function HomeScreen() {
 						)}
 					</View>
 				</ScrollView>
-
-				<Modal
-					visible={isPickerOpen}
-					transparent
-					animationType="fade"
-					onRequestClose={() => {
-						setIsPickerOpen(false);
-					}}
-				>
-					<Pressable
-						style={styles.modalOverlay}
-						onPress={() => {
-							setIsPickerOpen(false);
-						}}
-					>
-						<Pressable
-							style={styles.pickerCard}
-							onPress={(event) => {
-								event.stopPropagation();
-							}}
-						>
-							<View style={styles.pickerHeader}>
-								<View>
-									<Text style={styles.pickerTitle}>
-										Exibir foto até
-									</Text>
-
-									<Text style={styles.pickerSubtitle}>
-										Escolha a data e o horário
-									</Text>
-								</View>
-
-								<Pressable
-									style={styles.closeButton}
-									onPress={() => {
-										setIsPickerOpen(false);
-									}}
-								>
-									<Text style={styles.closeButtonText}>
-										×
-									</Text>
-								</Pressable>
-							</View>
-
-							<View style={styles.quickDates}>
-								<Pressable
-									style={[
-										styles.quickDateButton,
-										isSameDay(draftExpiresAt, new Date()) &&
-											styles.quickDateButtonSelected,
-									]}
-									onPress={selectToday}
-								>
-									<Text
-										style={[
-											styles.quickDateText,
-											isSameDay(
-												draftExpiresAt,
-												new Date(),
-											) && styles.quickDateTextSelected,
-										]}
-									>
-										Hoje
-									</Text>
-								</Pressable>
-
-								<Pressable
-									style={[
-										styles.quickDateButton,
-										(() => {
-											const tomorrow = new Date();
-											tomorrow.setDate(
-												tomorrow.getDate() + 1,
-											);
-
-											return isSameDay(
-												draftExpiresAt,
-												tomorrow,
-											);
-										})() && styles.quickDateButtonSelected,
-									]}
-									onPress={selectTomorrow}
-								>
-									<Text
-										style={[
-											styles.quickDateText,
-											(() => {
-												const tomorrow = new Date();
-												tomorrow.setDate(
-													tomorrow.getDate() + 1,
-												);
-
-												return isSameDay(
-													draftExpiresAt,
-													tomorrow,
-												);
-											})() &&
-												styles.quickDateTextSelected,
-										]}
-									>
-										Amanhã
-									</Text>
-								</Pressable>
-							</View>
-
-							<Text style={styles.pickerLabel}>Data</Text>
-
-							<View style={styles.dateSelector}>
-								<Pressable
-									disabled={previousDayDisabled}
-									style={[
-										styles.selectorArrow,
-										previousDayDisabled &&
-											styles.selectorArrowDisabled,
-									]}
-									onPress={() => {
-										changeDay(-1);
-									}}
-								>
-									<Text style={styles.selectorArrowText}>
-										‹
-									</Text>
-								</Pressable>
-
-								<View style={styles.selectedDate}>
-									<Text style={styles.selectedDateTitle}>
-										{getDateLabel(draftExpiresAt)}
-									</Text>
-
-									<Text style={styles.selectedDateValue}>
-										{draftExpiresAt.toLocaleDateString(
-											"pt-BR",
-										)}
-									</Text>
-								</View>
-
-								<Pressable
-									style={styles.selectorArrow}
-									onPress={() => {
-										changeDay(1);
-									}}
-								>
-									<Text style={styles.selectorArrowText}>
-										›
-									</Text>
-								</Pressable>
-							</View>
-
-							<Text style={styles.pickerLabel}>Horário</Text>
-
-							<View style={styles.timeSelector}>
-								<View style={styles.timeUnit}>
-									<Pressable
-										style={styles.timeArrow}
-										onPress={() => {
-											changeHour(1);
-										}}
-									>
-										<Text style={styles.timeArrowText}>
-											↑
-										</Text>
-									</Pressable>
-
-									<Text style={styles.timeValue}>
-										{draftExpiresAt
-											.getHours()
-											.toString()
-											.padStart(2, "0")}
-									</Text>
-
-									<Pressable
-										style={styles.timeArrow}
-										onPress={() => {
-											changeHour(-1);
-										}}
-									>
-										<Text style={styles.timeArrowText}>
-											↓
-										</Text>
-									</Pressable>
-								</View>
-
-								<Text style={styles.timeSeparator}>:</Text>
-
-								<View style={styles.timeUnit}>
-									<Pressable
-										style={styles.timeArrow}
-										onPress={() => {
-											changeMinute(MINUTE_STEP);
-										}}
-									>
-										<Text style={styles.timeArrowText}>
-											↑
-										</Text>
-									</Pressable>
-
-									<Text style={styles.timeValue}>
-										{draftExpiresAt
-											.getMinutes()
-											.toString()
-											.padStart(2, "0")}
-									</Text>
-
-									<Pressable
-										style={styles.timeArrow}
-										onPress={() => {
-											changeMinute(-MINUTE_STEP);
-										}}
-									>
-										<Text style={styles.timeArrowText}>
-											↓
-										</Text>
-									</Pressable>
-								</View>
-							</View>
-
-							{!draftIsValid && (
-								<Text style={styles.invalidTimeText}>
-									Escolha um horário no futuro.
-								</Text>
-							)}
-
-							<Pressable
-								disabled={!draftIsValid}
-								style={[
-									styles.confirmButton,
-									!draftIsValid &&
-										styles.confirmButtonDisabled,
-								]}
-								onPress={confirmExpiration}
-							>
-								<Text style={styles.confirmButtonText}>
-									Confirmar
-								</Text>
-							</Pressable>
-						</Pressable>
-					</Pressable>
-				</Modal>
 			</>
 		);
 	}
@@ -1484,7 +1100,7 @@ export default function HomeScreen() {
 				</View>
 
 				<Text style={styles.description}>
-					Você tem permissão para enviar uma foto temporária para:
+					Você tem permissão para enviar uma foto agendada para:
 				</Text>
 
 				{authorizedDevices.map((device) => (
@@ -1862,237 +1478,43 @@ const styles = StyleSheet.create({
 		color: "#555555",
 	},
 
-	dateButton: {
-		borderWidth: 1,
-		borderColor: "#dddddd",
-		borderRadius: 12,
-		padding: 15,
+	durationOptions: {
 		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
+		flexWrap: "wrap",
+		gap: 10,
 		marginBottom: 18,
 	},
 
-	datePlaceholder: {
-		fontSize: 15,
-		fontWeight: "500",
-	},
-
-	dateHint: {
-		marginTop: 3,
-		fontSize: 12,
-		color: "#888888",
-	},
-
-	dateArrow: {
-		fontSize: 28,
-		lineHeight: 28,
-		color: "#777777",
-	},
-
-	buttonDisabled: {
-		backgroundColor: "#bdbdbd",
-	},
-
-	modalOverlay: {
-		flex: 1,
-		backgroundColor: "rgba(0, 0, 0, 0.35)",
-		justifyContent: "center",
-		padding: 24,
-	},
-
-	pickerCard: {
-		backgroundColor: "#ffffff",
-		borderRadius: 18,
-		padding: 20,
-		maxWidth: 520,
-		width: "100%",
-		alignSelf: "center",
-	},
-
-	pickerHeader: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		marginBottom: 20,
-	},
-
-	pickerTitle: {
-		fontSize: 20,
-		fontWeight: "700",
-		color: "#111111",
-	},
-
-	pickerSubtitle: {
-		marginTop: 4,
-		fontSize: 13,
-		color: "#777777",
-	},
-
-	closeButton: {
-		width: 36,
-		height: 36,
-		alignItems: "center",
-		justifyContent: "center",
-		borderRadius: 18,
-		backgroundColor: "#f3f3f3",
-	},
-
-	closeButtonText: {
-		fontSize: 24,
-		lineHeight: 24,
-		color: "#555555",
-	},
-
-	quickDates: {
-		flexDirection: "row",
-		gap: 10,
-		marginBottom: 20,
-	},
-
-	quickDateButton: {
-		flex: 1,
-		paddingVertical: 10,
+	durationOption: {
+		width: "48%",
+		flexGrow: 1,
 		borderWidth: 1,
 		borderColor: "#dddddd",
-		borderRadius: 10,
+		borderRadius: 12,
+		paddingVertical: 14,
+		paddingHorizontal: 12,
 		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: "#ffffff",
 	},
 
-	quickDateButtonSelected: {
+	durationOptionSelected: {
 		backgroundColor: "#111111",
 		borderColor: "#111111",
 	},
 
-	quickDateText: {
-		fontSize: 14,
+	durationOptionText: {
+		fontSize: 15,
 		fontWeight: "600",
-		color: "#444444",
+		color: "#333333",
 	},
 
-	quickDateTextSelected: {
+	durationOptionTextSelected: {
 		color: "#ffffff",
 	},
 
-	pickerLabel: {
-		fontSize: 13,
-		fontWeight: "600",
-		color: "#666666",
-		marginBottom: 8,
-	},
-
-	dateSelector: {
-		height: 70,
-		flexDirection: "row",
-		alignItems: "center",
-		borderWidth: 1,
-		borderColor: "#dddddd",
-		borderRadius: 12,
-		marginBottom: 22,
-	},
-
-	selectorArrow: {
-		width: 54,
-		height: "100%",
-		alignItems: "center",
-		justifyContent: "center",
-	},
-
-	selectorArrowDisabled: {
-		opacity: 0.4,
-	},
-
-	selectorArrowText: {
-		fontSize: 28,
-		color: "#333333",
-	},
-
-	selectedDate: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-
-	selectedDateTitle: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#111111",
-	},
-
-	selectedDateValue: {
-		marginTop: 3,
-		fontSize: 12,
-		color: "#888888",
-	},
-
-	timeSelector: {
-		flexDirection: "row",
-		justifyContent: "center",
-		alignItems: "center",
-		marginTop: 2,
-		marginBottom: 10,
-	},
-
-	timeUnit: {
-		width: 86,
-		alignItems: "center",
-	},
-
-	timeArrow: {
-		width: 54,
-		height: 38,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-
-	timeArrowText: {
-		fontSize: 24,
-		color: "#333333",
-	},
-
-	timeValue: {
-		width: 74,
-		paddingVertical: 10,
-		borderWidth: 1,
-		borderColor: "#dddddd",
-		borderRadius: 10,
-		textAlign: "center",
-		fontSize: 28,
-		fontWeight: "600",
-		color: "#111111",
-		fontVariant: ["tabular-nums"],
-	},
-
-	timeSeparator: {
-		marginHorizontal: 7,
-		fontSize: 28,
-		fontWeight: "600",
-		color: "#444444",
-	},
-
-	invalidTimeText: {
-		marginTop: 4,
-		textAlign: "center",
-		fontSize: 12,
-		color: "#b00020",
-	},
-
-	confirmButton: {
-		marginTop: 18,
-		backgroundColor: "#111111",
-		borderRadius: 12,
-		paddingVertical: 14,
-		alignItems: "center",
-	},
-
-	confirmButtonDisabled: {
+	buttonDisabled: {
 		backgroundColor: "#bdbdbd",
-	},
-
-	confirmButtonText: {
-		color: "#ffffff",
-		fontSize: 16,
-		fontWeight: "600",
 	},
 
 	successContainer: {

@@ -35,7 +35,7 @@ type TemporaryPhotoBase = {
 export type TemporaryPhoto =
 	| (TemporaryPhotoBase & {
 			recurrence: "once";
-			expiresAt: Date;
+			durationMinutes: number;
 	  })
 	| (TemporaryPhotoBase & {
 			recurrence: "yearly";

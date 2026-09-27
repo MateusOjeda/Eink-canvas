@@ -1,6 +1,14 @@
 import { useCallback, useState } from "react";
 
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+	ActivityIndicator,
+	Alert,
+	Modal,
+	Pressable,
+	StyleSheet,
+	Text,
+	View,
+} from "react-native";
 
 import { router, Stack, useFocusEffect } from "expo-router";
 
@@ -17,14 +25,22 @@ import type { Device } from "@/types/device";
 export default function HomeScreen() {
 	const [devices, setDevices] = useState<Device[] | null>(null);
 
+	const [loadingDevices, setLoadingDevices] = useState(true);
+
 	const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
 	useFocusEffect(
 		useCallback(() => {
 			const loadDevices = async () => {
-				const loadedDevices = await getDevices();
+				try {
+					setLoadingDevices(true);
 
-				setDevices(loadedDevices);
+					const loadedDevices = await getDevices();
+
+					setDevices(loadedDevices);
+				} finally {
+					setLoadingDevices(false);
+				}
 			};
 
 			loadDevices();
@@ -127,7 +143,11 @@ export default function HomeScreen() {
 			</Modal>
 
 			<View style={styles.container}>
-				{devices && (
+				{loadingDevices ? (
+					<View style={styles.deviceLoading}>
+						<ActivityIndicator />
+					</View>
+				) : devices ? (
 					<View style={styles.deviceList}>
 						{devices.map((device) => (
 							<View key={device.id} style={styles.deviceCard}>
@@ -191,7 +211,7 @@ export default function HomeScreen() {
 							</View>
 						))}
 					</View>
-				)}
+				) : null}
 
 				<Pressable
 					style={styles.addButton}
@@ -220,6 +240,11 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 
 		marginBottom: 20,
+	},
+
+	deviceLoading: {
+		paddingVertical: 24,
+		alignItems: "center",
 	},
 
 	deviceList: {

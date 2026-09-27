@@ -42,55 +42,22 @@ const MONTH_NAMES = [
 	"Dezembro",
 ];
 
-const MINUTE_STEP = 5;
+function formatDuration(minutes: number): string {
+	const totalHours = Math.floor(minutes / 60);
+	const days = Math.floor(totalHours / 24);
+	const hours = totalHours % 24;
 
-function createDefaultExpiration(): Date {
-	const date = new Date();
+	const parts: string[] = [];
 
-	date.setHours(date.getHours() + 1);
-
-	const minutes = Math.ceil(date.getMinutes() / MINUTE_STEP) * MINUTE_STEP;
-
-	date.setMinutes(minutes, 0, 0);
-
-	return date;
-}
-
-function startOfDay(date: Date): Date {
-	const result = new Date(date);
-
-	result.setHours(0, 0, 0, 0);
-
-	return result;
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-	return (
-		a.getFullYear() === b.getFullYear() &&
-		a.getMonth() === b.getMonth() &&
-		a.getDate() === b.getDate()
-	);
-}
-
-function getDateLabel(date: Date): string {
-	const today = new Date();
-
-	const tomorrow = new Date();
-	tomorrow.setDate(tomorrow.getDate() + 1);
-
-	if (isSameDay(date, today)) {
-		return "Hoje";
+	if (days > 0) {
+		parts.push(`${days} ${days === 1 ? "dia" : "dias"}`);
 	}
 
-	if (isSameDay(date, tomorrow)) {
-		return "Amanhã";
+	if (hours > 0) {
+		parts.push(`${hours} ${hours === 1 ? "hora" : "horas"}`);
 	}
 
-	const value = date.toLocaleDateString("pt-BR", {
-		weekday: "long",
-	});
-
-	return value.charAt(0).toUpperCase() + value.slice(1);
+	return parts.join(" e ");
 }
 
 function createDefaultYearlyDate(): YearlyDate {
@@ -131,15 +98,13 @@ export default function TemporaryPhotoScreen() {
 
 	const [recurrence, setRecurrence] = useState<Recurrence>("once");
 
-	const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+	const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
 
 	const [yearlyDate, setYearlyDate] = useState<YearlyDate | null>(null);
 
-	const [isPickerOpen, setIsPickerOpen] = useState(false);
+	const [isDurationPickerOpen, setIsDurationPickerOpen] = useState(false);
 
-	const [draftExpiresAt, setDraftExpiresAt] = useState<Date>(
-		createDefaultExpiration,
-	);
+	const [draftDurationHours, setDraftDurationHours] = useState(1);
 
 	const [isYearlyPickerOpen, setIsYearlyPickerOpen] = useState(false);
 
@@ -170,93 +135,37 @@ export default function TemporaryPhotoScreen() {
 		});
 	};
 
-	const openExpirationPicker = () => {
-		setDraftExpiresAt(
-			expiresAt ? new Date(expiresAt) : createDefaultExpiration(),
+	const openDurationPicker = () => {
+		setDraftDurationHours(
+			durationMinutes ? durationMinutes / 60 : 1,
 		);
 
-		setIsPickerOpen(true);
+		setIsDurationPickerOpen(true);
 	};
 
-	const selectToday = () => {
-		const today = new Date();
-
-		const next = new Date(draftExpiresAt);
-
-		next.setFullYear(
-			today.getFullYear(),
-			today.getMonth(),
-			today.getDate(),
+	const changeDurationDays = (amount: number) => {
+		setDraftDurationHours((current) =>
+			Math.max(0, current + amount * 24),
 		);
-
-		setDraftExpiresAt(next);
 	};
 
-	const selectTomorrow = () => {
-		const tomorrow = new Date();
-
-		tomorrow.setDate(tomorrow.getDate() + 1);
-
-		const next = new Date(draftExpiresAt);
-
-		next.setFullYear(
-			tomorrow.getFullYear(),
-			tomorrow.getMonth(),
-			tomorrow.getDate(),
-		);
-
-		setDraftExpiresAt(next);
+	const changeDurationHours = (amount: number) => {
+		setDraftDurationHours((current) => Math.max(0, current + amount));
 	};
 
-	const changeDay = (amount: number) => {
-		const next = new Date(draftExpiresAt);
-
-		next.setDate(next.getDate() + amount);
-
-		if (startOfDay(next).getTime() < startOfDay(new Date()).getTime()) {
-			return;
-		}
-
-		setDraftExpiresAt(next);
-	};
-
-	const changeHour = (amount: number) => {
-		const next = new Date(draftExpiresAt);
-
-		next.setHours(next.getHours() + amount);
-
-		if (startOfDay(next).getTime() < startOfDay(new Date()).getTime()) {
-			return;
-		}
-
-		setDraftExpiresAt(next);
-	};
-
-	const changeMinute = (amount: number) => {
-		const next = new Date(draftExpiresAt);
-
-		next.setMinutes(next.getMinutes() + amount);
-
-		if (startOfDay(next).getTime() < startOfDay(new Date()).getTime()) {
-			return;
-		}
-
-		setDraftExpiresAt(next);
-	};
-
-	const confirmExpiration = () => {
-		if (draftExpiresAt.getTime() <= Date.now()) {
+	const confirmDuration = () => {
+		if (draftDurationHours <= 0) {
 			Alert.alert(
-				"Horário inválido",
-				"Escolha uma data e um horário no futuro.",
+				"Duração inválida",
+				"Escolha uma duração de pelo menos 1 hora.",
 			);
 
 			return;
 		}
 
-		setExpiresAt(new Date(draftExpiresAt));
+		setDurationMinutes(draftDurationHours * 60);
 
-		setIsPickerOpen(false);
+		setIsDurationPickerOpen(false);
 	};
 
 	const openYearlyPicker = () => {
@@ -321,19 +230,10 @@ export default function TemporaryPhotoScreen() {
 		}
 
 		if (recurrence === "once") {
-			if (!expiresAt) {
+			if (!durationMinutes || durationMinutes <= 0) {
 				Alert.alert(
-					"Horário não definido",
-					"Escolha até quando a foto deve permanecer no quadro.",
-				);
-
-				return;
-			}
-
-			if (expiresAt.getTime() <= Date.now()) {
-				Alert.alert(
-					"Horário inválido",
-					"Escolha uma data e um horário no futuro.",
+					"Duração não definida",
+					"Escolha por quanto tempo a foto deve permanecer no quadro.",
 				);
 
 				return;
@@ -361,7 +261,7 @@ export default function TemporaryPhotoScreen() {
 					height,
 
 					recurrence: "once",
-					expiresAt: expiresAt!,
+					durationMinutes: durationMinutes!,
 				});
 			} else {
 				await uploadTemporaryPhoto({
@@ -381,7 +281,7 @@ export default function TemporaryPhotoScreen() {
 			Alert.alert(
 				"Foto enviada",
 				recurrence === "once"
-					? "A foto temporária foi enviada com sucesso."
+					? "A foto agendada foi enviada com sucesso."
 					: "A recorrência anual foi salva com sucesso.",
 				[
 					{
@@ -394,30 +294,27 @@ export default function TemporaryPhotoScreen() {
 				],
 			);
 		} catch (error) {
-			console.error("Erro ao enviar foto temporária:", error);
+			console.error("Erro ao enviar foto agendada:", error);
 
-			Alert.alert("Erro", "Não foi possível enviar a foto temporária.");
+			Alert.alert("Erro", "Não foi possível enviar a foto agendada.");
 		} finally {
 			setIsSending(false);
 		}
 	};
 
-	const previousDayDisabled =
-		startOfDay(draftExpiresAt).getTime() <=
-		startOfDay(new Date()).getTime();
+	const draftDurationDays = Math.floor(draftDurationHours / 24);
 
-	const draftIsValid = draftExpiresAt.getTime() > Date.now();
+	const draftDurationRemainingHours = draftDurationHours % 24;
+
+	const draftDurationIsValid = draftDurationHours > 0;
 
 	const hasImage = !!previewUri && !!binUri && !!width && !!height;
 
 	const canSend =
 		hasImage &&
 		(recurrence === "once"
-			? !!expiresAt && expiresAt.getTime() > Date.now()
+			? !!durationMinutes && durationMinutes > 0
 			: !!yearlyDate);
-
-	const tomorrow = new Date();
-	tomorrow.setDate(tomorrow.getDate() + 1);
 
 	return (
 		<>
@@ -480,7 +377,7 @@ export default function TemporaryPhotoScreen() {
 									styles.recurrenceButtonTextSelected,
 							]}
 						>
-							Até uma data
+							Por duração
 						</Text>
 					</Pressable>
 
@@ -515,36 +412,28 @@ export default function TemporaryPhotoScreen() {
 
 					<Text style={styles.infoText}>
 						{recurrence === "once"
-							? "A foto será exibida na próxima sincronização do quadro e permanecerá até o horário escolhido."
+							? "A foto será exibida na próxima sincronização do quadro e permanecerá pelo tempo escolhido a partir do momento em que for exibida."
 							: "A foto ficará ativa no dia escolhido todos os anos, das 00:00 às 23:59 no fuso local do quadro."}
 					</Text>
 				</View>
 
 				{recurrence === "once" ? (
 					<>
-						<Text style={styles.label}>Exibir até</Text>
+						<Text style={styles.label}>Duração</Text>
 
 						<Pressable
 							style={styles.dateButton}
-							onPress={openExpirationPicker}
+							onPress={openDurationPicker}
 						>
 							<View>
 								<Text style={styles.datePlaceholder}>
-									{expiresAt
-										? expiresAt.toLocaleDateString("pt-BR")
-										: "Definir data e hora"}
+									{durationMinutes
+										? formatDuration(durationMinutes)
+										: "Definir duração"}
 								</Text>
 
 								<Text style={styles.dateHint}>
-									{expiresAt
-										? expiresAt.toLocaleTimeString(
-												"pt-BR",
-												{
-													hour: "2-digit",
-													minute: "2-digit",
-												},
-											)
-										: "Ainda não definido"}
+									A partir da primeira exibição
 								</Text>
 							</View>
 
@@ -592,13 +481,13 @@ export default function TemporaryPhotoScreen() {
 					{recurrence === "once" ? (
 						<>
 							<Text style={styles.rule}>
-								• NEXT descarta a foto temporária antes do
-								vencimento.
+								• NEXT descarta a foto agendada antes do fim da
+								duração.
 							</Text>
 
 							<Text style={styles.rule}>
-								• Após expirar, a foto é removida e não fica no
-								histórico.
+								• Após o tempo escolhido, a foto deixa de ser exibida
+								e não fica no histórico.
 							</Text>
 						</>
 					) : (
@@ -623,7 +512,7 @@ export default function TemporaryPhotoScreen() {
 					) : (
 						<Text style={styles.sendButtonText}>
 							{recurrence === "once"
-								? "Enviar foto temporária"
+								? "Enviar foto agendada"
 								: "Enviar recorrência anual"}
 						</Text>
 					)}
@@ -631,17 +520,17 @@ export default function TemporaryPhotoScreen() {
 			</ScrollView>
 
 			<Modal
-				visible={isPickerOpen}
+				visible={isDurationPickerOpen}
 				transparent
 				animationType="fade"
 				onRequestClose={() => {
-					setIsPickerOpen(false);
+					setIsDurationPickerOpen(false);
 				}}
 			>
 				<Pressable
 					style={styles.modalOverlay}
 					onPress={() => {
-						setIsPickerOpen(false);
+						setIsDurationPickerOpen(false);
 					}}
 				>
 					<Pressable
@@ -653,127 +542,31 @@ export default function TemporaryPhotoScreen() {
 						<View style={styles.pickerHeader}>
 							<View>
 								<Text style={styles.pickerTitle}>
-									Exibir foto até
+									Duração da foto
 								</Text>
 
 								<Text style={styles.pickerSubtitle}>
-									Escolha a data e o horário
+									Escolha dias e horas
 								</Text>
 							</View>
 
 							<Pressable
 								style={styles.closeButton}
 								onPress={() => {
-									setIsPickerOpen(false);
+									setIsDurationPickerOpen(false);
 								}}
 							>
 								<Feather name="x" size={21} color="#555555" />
 							</Pressable>
 						</View>
 
-						<View style={styles.quickDates}>
-							<Pressable
-								style={[
-									styles.quickDateButton,
+						<View style={styles.yearlySelectors}>
+							<View style={styles.yearlySelectorColumn}>
+								<Text style={styles.pickerLabel}>Dias</Text>
 
-									isSameDay(draftExpiresAt, new Date()) &&
-										styles.quickDateButtonSelected,
-								]}
-								onPress={selectToday}
-							>
-								<Text
-									style={[
-										styles.quickDateText,
-
-										isSameDay(draftExpiresAt, new Date()) &&
-											styles.quickDateTextSelected,
-									]}
-								>
-									Hoje
-								</Text>
-							</Pressable>
-
-							<Pressable
-								style={[
-									styles.quickDateButton,
-
-									isSameDay(draftExpiresAt, tomorrow) &&
-										styles.quickDateButtonSelected,
-								]}
-								onPress={selectTomorrow}
-							>
-								<Text
-									style={[
-										styles.quickDateText,
-
-										isSameDay(draftExpiresAt, tomorrow) &&
-											styles.quickDateTextSelected,
-									]}
-								>
-									Amanhã
-								</Text>
-							</Pressable>
-						</View>
-
-						<Text style={styles.pickerLabel}>Data</Text>
-
-						<View style={styles.dateSelector}>
-							<Pressable
-								disabled={previousDayDisabled}
-								style={[
-									styles.selectorArrow,
-
-									previousDayDisabled &&
-										styles.selectorArrowDisabled,
-								]}
-								onPress={() => {
-									changeDay(-1);
-								}}
-							>
-								<Feather
-									name="chevron-left"
-									size={22}
-									color={
-										previousDayDisabled
-											? "#cccccc"
-											: "#333333"
-									}
-								/>
-							</Pressable>
-
-							<View style={styles.selectedDate}>
-								<Text style={styles.selectedDateTitle}>
-									{getDateLabel(draftExpiresAt)}
-								</Text>
-
-								<Text style={styles.selectedDateValue}>
-									{draftExpiresAt.toLocaleDateString("pt-BR")}
-								</Text>
-							</View>
-
-							<Pressable
-								style={styles.selectorArrow}
-								onPress={() => {
-									changeDay(1);
-								}}
-							>
-								<Feather
-									name="chevron-right"
-									size={22}
-									color="#333333"
-								/>
-							</Pressable>
-						</View>
-
-						<Text style={styles.pickerLabel}>Horário</Text>
-
-						<View style={styles.timeSelector}>
-							<View style={styles.timeUnit}>
 								<Pressable
-									style={styles.timeArrow}
-									onPress={() => {
-										changeHour(1);
-									}}
+									style={styles.yearlyArrow}
+									onPress={() => changeDurationDays(1)}
 								>
 									<Feather
 										name="chevron-up"
@@ -782,18 +575,13 @@ export default function TemporaryPhotoScreen() {
 									/>
 								</Pressable>
 
-								<Text style={styles.timeValue}>
-									{draftExpiresAt
-										.getHours()
-										.toString()
-										.padStart(2, "0")}
+								<Text style={styles.yearlyDayValue}>
+									{draftDurationDays}
 								</Text>
 
 								<Pressable
-									style={styles.timeArrow}
-									onPress={() => {
-										changeHour(-1);
-									}}
+									style={styles.yearlyArrow}
+									onPress={() => changeDurationDays(-1)}
 								>
 									<Feather
 										name="chevron-down"
@@ -803,14 +591,12 @@ export default function TemporaryPhotoScreen() {
 								</Pressable>
 							</View>
 
-							<Text style={styles.timeSeparator}>:</Text>
+							<View style={styles.yearlySelectorColumn}>
+								<Text style={styles.pickerLabel}>Horas</Text>
 
-							<View style={styles.timeUnit}>
 								<Pressable
-									style={styles.timeArrow}
-									onPress={() => {
-										changeMinute(MINUTE_STEP);
-									}}
+									style={styles.yearlyArrow}
+									onPress={() => changeDurationHours(1)}
 								>
 									<Feather
 										name="chevron-up"
@@ -819,18 +605,15 @@ export default function TemporaryPhotoScreen() {
 									/>
 								</Pressable>
 
-								<Text style={styles.timeValue}>
-									{draftExpiresAt
-										.getMinutes()
+								<Text style={styles.yearlyDayValue}>
+									{draftDurationRemainingHours
 										.toString()
 										.padStart(2, "0")}
 								</Text>
 
 								<Pressable
-									style={styles.timeArrow}
-									onPress={() => {
-										changeMinute(-MINUTE_STEP);
-									}}
+									style={styles.yearlyArrow}
+									onPress={() => changeDurationHours(-1)}
 								>
 									<Feather
 										name="chevron-down"
@@ -841,20 +624,21 @@ export default function TemporaryPhotoScreen() {
 							</View>
 						</View>
 
-						{!draftIsValid && (
+						{!draftDurationIsValid && (
 							<Text style={styles.invalidTimeText}>
-								Escolha um horário no futuro.
+								Escolha uma duração de pelo menos 1 hora.
 							</Text>
 						)}
 
 						<Pressable
-							disabled={!draftIsValid}
+							disabled={!draftDurationIsValid}
 							style={[
 								styles.confirmButton,
 
-								!draftIsValid && styles.confirmButtonDisabled,
+								!draftDurationIsValid &&
+									styles.confirmButtonDisabled,
 							]}
-							onPress={confirmExpiration}
+							onPress={confirmDuration}
 						>
 							<Text style={styles.confirmButtonText}>
 								Confirmar

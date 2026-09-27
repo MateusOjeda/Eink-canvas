@@ -27,13 +27,27 @@ type TemporaryPhotoWithPreview = TemporaryPhoto & {
 	previewUri: string;
 };
 
-function formatExpiration(date: Date) {
-	return date.toLocaleString("pt-BR", {
-		day: "2-digit",
-		month: "2-digit",
-		hour: "2-digit",
-		minute: "2-digit",
-	});
+function formatDuration(minutes: number) {
+	const days = Math.floor(minutes / (24 * 60));
+	const remainingMinutes = minutes % (24 * 60);
+	const hours = Math.floor(remainingMinutes / 60);
+	const mins = remainingMinutes % 60;
+
+	const parts: string[] = [];
+
+	if (days > 0) {
+		parts.push(`${days} ${days === 1 ? "dia" : "dias"}`);
+	}
+
+	if (hours > 0) {
+		parts.push(`${hours} ${hours === 1 ? "hora" : "horas"}`);
+	}
+
+	if (mins > 0) {
+		parts.push(`${mins} min`);
+	}
+
+	return parts.join(" e ");
 }
 
 function formatYearlyDate(date: { month: number; day: number }) {
@@ -90,7 +104,7 @@ export default function TemporaryPhotosScreen() {
 
 			setPhotos(photosWithPreview);
 		} catch (error) {
-			console.error("Erro ao carregar fotos temporárias:", error);
+			console.error("Erro ao carregar fotos agendadas:", error);
 		} finally {
 			setLoading(false);
 		}
@@ -134,7 +148,7 @@ export default function TemporaryPhotosScreen() {
 							);
 						} catch (error) {
 							console.error(
-								"Erro ao excluir foto temporária:",
+								"Erro ao excluir foto agendada:",
 								error,
 							);
 
@@ -179,11 +193,11 @@ export default function TemporaryPhotosScreen() {
 					{photos.length === 0 ? (
 						<View style={styles.emptyContainer}>
 							<Text style={styles.emptyTitle}>
-								Nenhuma foto temporária
+								Nenhuma foto agendada
 							</Text>
 
 							<Text style={styles.emptyText}>
-								As fotos temporárias e recorrências anuais deste
+								As fotos agendadas e recorrências anuais deste
 								quadro aparecerão aqui.
 							</Text>
 						</View>
@@ -218,12 +232,12 @@ export default function TemporaryPhotosScreen() {
 										{photo.recurrence === "once" ? (
 											<>
 												<Text style={styles.expirationLabel}>
-													Expira em
+													Duração
 												</Text>
 
 												<Text style={styles.expirationValue}>
-													{formatExpiration(
-														photo.expiresAt,
+													{formatDuration(
+														photo.durationMinutes,
 													)}
 												</Text>
 											</>

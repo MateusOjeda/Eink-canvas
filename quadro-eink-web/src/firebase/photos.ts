@@ -3,7 +3,6 @@ import {
 	doc,
 	serverTimestamp,
 	setDoc,
-	Timestamp,
 } from "firebase/firestore";
 
 import { ref, uploadBytes } from "firebase/storage";
@@ -19,7 +18,7 @@ type UploadTemporaryPhotoParams = {
 	width: number;
 	height: number;
 
-	expiresAt: Date;
+	durationMinutes: number;
 };
 
 export async function uploadTemporaryPhoto({
@@ -31,7 +30,7 @@ export async function uploadTemporaryPhoto({
 	width,
 	height,
 
-	expiresAt,
+	durationMinutes,
 }: UploadTemporaryPhotoParams): Promise<string> {
 	const user = auth.currentUser;
 
@@ -88,7 +87,7 @@ export async function uploadTemporaryPhoto({
 
 		recurrence: "once",
 
-		expiresAt: Timestamp.fromDate(expiresAt),
+		durationMinutes,
 
 		createdAt: serverTimestamp(),
 	});

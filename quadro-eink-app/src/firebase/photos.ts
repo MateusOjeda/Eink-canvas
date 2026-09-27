@@ -9,7 +9,6 @@ import {
 	query,
 	serverTimestamp,
 	setDoc,
-	Timestamp,
 	updateDoc,
 } from "firebase/firestore";
 
@@ -44,7 +43,7 @@ type UploadTemporaryPhotoParams = {
 } & (
 	| {
 			recurrence: "once";
-			expiresAt: Date;
+			durationMinutes: number;
 	  }
 	| {
 			recurrence: "yearly";
@@ -85,7 +84,7 @@ export async function getTemporaryPhotos(
 
 				recurrence: "once" as const,
 
-				expiresAt: data.expiresAt.toDate(),
+				durationMinutes: data.durationMinutes,
 			};
 		}
 
@@ -281,7 +280,7 @@ export async function uploadTemporaryPhoto(
 
 		...(recurrence === "once"
 			? {
-					expiresAt: Timestamp.fromDate(params.expiresAt),
+					durationMinutes: params.durationMinutes,
 				}
 			: {
 					yearlyDate: params.yearlyDate,
