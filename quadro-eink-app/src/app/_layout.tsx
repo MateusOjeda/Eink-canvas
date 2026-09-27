@@ -126,14 +126,14 @@ export default function RootLayout() {
 				<Stack.Screen
 					name="device/[deviceId]/temporary-photos"
 					options={{
-						title: "Fotos temporárias",
+						title: "Fotos agendadas",
 					}}
 				/>
 
 				<Stack.Screen
 					name="device/[deviceId]/temporary-photo"
 					options={{
-						title: "Adicionar foto temporária",
+						title: "Adicionar foto agendada",
 					}}
 				/>
 

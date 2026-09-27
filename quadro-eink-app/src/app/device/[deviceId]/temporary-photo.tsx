@@ -6,18 +6,41 @@ import {
 	Image,
 	Modal,
 	Pressable,
+	ScrollView,
 	StyleSheet,
 	Text,
 	View,
 } from "react-native";
 
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 import { Paths } from "expo-file-system";
 
 import { Feather, Ionicons } from "@expo/vector-icons";
 
 import { uploadTemporaryPhoto } from "@/firebase/photos";
+
+type Recurrence = "once" | "yearly";
+
+type YearlyDate = {
+	month: number;
+	day: number;
+};
+
+const MONTH_NAMES = [
+	"Janeiro",
+	"Fevereiro",
+	"Março",
+	"Abril",
+	"Maio",
+	"Junho",
+	"Julho",
+	"Agosto",
+	"Setembro",
+	"Outubro",
+	"Novembro",
+	"Dezembro",
+];
 
 const MINUTE_STEP = 5;
 
@@ -70,6 +93,23 @@ function getDateLabel(date: Date): string {
 	return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function createDefaultYearlyDate(): YearlyDate {
+	const today = new Date();
+
+	return {
+		month: today.getMonth() + 1,
+		day: today.getDate(),
+	};
+}
+
+function getDaysInMonth(month: number): number {
+	return new Date(2024, month, 0).getDate();
+}
+
+function formatYearlyDate(date: YearlyDate): string {
+	return `${date.day} de ${MONTH_NAMES[date.month - 1].toLowerCase()}`;
+}
+
 export default function TemporaryPhotoScreen() {
 	const {
 		deviceId,
@@ -89,12 +129,22 @@ export default function TemporaryPhotoScreen() {
 		imageHeight?: string;
 	}>();
 
+	const [recurrence, setRecurrence] = useState<Recurrence>("once");
+
 	const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+
+	const [yearlyDate, setYearlyDate] = useState<YearlyDate | null>(null);
 
 	const [isPickerOpen, setIsPickerOpen] = useState(false);
 
 	const [draftExpiresAt, setDraftExpiresAt] = useState<Date>(
 		createDefaultExpiration,
+	);
+
+	const [isYearlyPickerOpen, setIsYearlyPickerOpen] = useState(false);
+
+	const [draftYearlyDate, setDraftYearlyDate] = useState<YearlyDate>(
+		createDefaultYearlyDate,
 	);
 
 	const [isSending, setIsSending] = useState(false);
@@ -209,6 +259,57 @@ export default function TemporaryPhotoScreen() {
 		setIsPickerOpen(false);
 	};
 
+	const openYearlyPicker = () => {
+		setDraftYearlyDate(yearlyDate ?? createDefaultYearlyDate());
+
+		setIsYearlyPickerOpen(true);
+	};
+
+	const changeYearlyMonth = (amount: number) => {
+		setDraftYearlyDate((current) => {
+			let month = current.month + amount;
+
+			if (month > 12) {
+				month = 1;
+			}
+
+			if (month < 1) {
+				month = 12;
+			}
+
+			return {
+				month,
+				day: Math.min(current.day, getDaysInMonth(month)),
+			};
+		});
+	};
+
+	const changeYearlyDay = (amount: number) => {
+		setDraftYearlyDate((current) => {
+			const maxDay = getDaysInMonth(current.month);
+			let day = current.day + amount;
+
+			if (day > maxDay) {
+				day = 1;
+			}
+
+			if (day < 1) {
+				day = maxDay;
+			}
+
+			return {
+				...current,
+				day,
+			};
+		});
+	};
+
+	const confirmYearlyDate = () => {
+		setYearlyDate({ ...draftYearlyDate });
+
+		setIsYearlyPickerOpen(false);
+	};
+
 	const sendTemporaryPhoto = async () => {
 		if (!previewUri || !binUri || !width || !height) {
 			Alert.alert(
@@ -219,19 +320,28 @@ export default function TemporaryPhotoScreen() {
 			return;
 		}
 
-		if (!expiresAt) {
-			Alert.alert(
-				"Horário não definido",
-				"Escolha até quando a foto deve permanecer no quadro.",
-			);
+		if (recurrence === "once") {
+			if (!expiresAt) {
+				Alert.alert(
+					"Horário não definido",
+					"Escolha até quando a foto deve permanecer no quadro.",
+				);
 
-			return;
-		}
+				return;
+			}
 
-		if (expiresAt.getTime() <= Date.now()) {
+			if (expiresAt.getTime() <= Date.now()) {
+				Alert.alert(
+					"Horário inválido",
+					"Escolha uma data e um horário no futuro.",
+				);
+
+				return;
+			}
+		} else if (!yearlyDate) {
 			Alert.alert(
-				"Horário inválido",
-				"Escolha uma data e um horário no futuro.",
+				"Data não definida",
+				"Escolha o dia da recorrência anual.",
 			);
 
 			return;
@@ -240,21 +350,39 @@ export default function TemporaryPhotoScreen() {
 		try {
 			setIsSending(true);
 
-			await uploadTemporaryPhoto({
-				deviceId,
+			if (recurrence === "once") {
+				await uploadTemporaryPhoto({
+					deviceId,
 
-				previewUri,
-				binUri,
+					previewUri,
+					binUri,
 
-				width,
-				height,
+					width,
+					height,
 
-				expiresAt,
-			});
+					recurrence: "once",
+					expiresAt: expiresAt!,
+				});
+			} else {
+				await uploadTemporaryPhoto({
+					deviceId,
+
+					previewUri,
+					binUri,
+
+					width,
+					height,
+
+					recurrence: "yearly",
+					yearlyDate: yearlyDate!,
+				});
+			}
 
 			Alert.alert(
 				"Foto enviada",
-				"A foto temporária foi enviada com sucesso.",
+				recurrence === "once"
+					? "A foto temporária foi enviada com sucesso."
+					: "A recorrência anual foi salva com sucesso.",
 				[
 					{
 						text: "OK",
@@ -280,20 +408,24 @@ export default function TemporaryPhotoScreen() {
 
 	const draftIsValid = draftExpiresAt.getTime() > Date.now();
 
+	const hasImage = !!previewUri && !!binUri && !!width && !!height;
+
 	const canSend =
-		!!previewUri &&
-		!!binUri &&
-		!!width &&
-		!!height &&
-		!!expiresAt &&
-		expiresAt.getTime() > Date.now();
+		hasImage &&
+		(recurrence === "once"
+			? !!expiresAt && expiresAt.getTime() > Date.now()
+			: !!yearlyDate);
 
 	const tomorrow = new Date();
 	tomorrow.setDate(tomorrow.getDate() + 1);
 
 	return (
 		<>
-			<View style={styles.container}>
+			<ScrollView
+				style={styles.container}
+				contentContainerStyle={styles.content}
+				showsVerticalScrollIndicator={false}
+			>
 				{previewUri ? (
 					<View style={styles.imageContainer}>
 						<Image
@@ -328,56 +460,153 @@ export default function TemporaryPhotoScreen() {
 					</Text>
 				</Pressable>
 
+				<Text style={styles.label}>Tipo de exibição</Text>
+
+				<View style={styles.recurrenceSelector}>
+					<Pressable
+						style={[
+							styles.recurrenceButton,
+
+							recurrence === "once" &&
+								styles.recurrenceButtonSelected,
+						]}
+						onPress={() => setRecurrence("once")}
+					>
+						<Text
+							style={[
+								styles.recurrenceButtonText,
+
+								recurrence === "once" &&
+									styles.recurrenceButtonTextSelected,
+							]}
+						>
+							Até uma data
+						</Text>
+					</Pressable>
+
+					<Pressable
+						style={[
+							styles.recurrenceButton,
+
+							recurrence === "yearly" &&
+								styles.recurrenceButtonSelected,
+						]}
+						onPress={() => setRecurrence("yearly")}
+					>
+						<Text
+							style={[
+								styles.recurrenceButtonText,
+
+								recurrence === "yearly" &&
+									styles.recurrenceButtonTextSelected,
+							]}
+						>
+							Todo ano
+						</Text>
+					</Pressable>
+				</View>
+
 				<View style={styles.infoBox}>
-					<Feather name="clock" size={19} color="#666666" />
+					<Feather
+						name={recurrence === "once" ? "clock" : "repeat"}
+						size={19}
+						color="#666666"
+					/>
 
 					<Text style={styles.infoText}>
-						A foto será exibida na próxima sincronização do quadro e
-						permanecerá até o horário escolhido.
+						{recurrence === "once"
+							? "A foto será exibida na próxima sincronização do quadro e permanecerá até o horário escolhido."
+							: "A foto ficará ativa no dia escolhido todos os anos, das 00:00 às 23:59 no fuso local do quadro."}
 					</Text>
 				</View>
 
-				<Text style={styles.label}>Exibir até</Text>
+				{recurrence === "once" ? (
+					<>
+						<Text style={styles.label}>Exibir até</Text>
 
-				<Pressable
-					style={styles.dateButton}
-					onPress={openExpirationPicker}
-				>
-					<View>
-						<Text style={styles.datePlaceholder}>
-							{expiresAt
-								? expiresAt.toLocaleDateString("pt-BR")
-								: "Definir data e hora"}
-						</Text>
+						<Pressable
+							style={styles.dateButton}
+							onPress={openExpirationPicker}
+						>
+							<View>
+								<Text style={styles.datePlaceholder}>
+									{expiresAt
+										? expiresAt.toLocaleDateString("pt-BR")
+										: "Definir data e hora"}
+								</Text>
 
-						<Text style={styles.dateHint}>
-							{expiresAt
-								? expiresAt.toLocaleTimeString("pt-BR", {
-										hour: "2-digit",
-										minute: "2-digit",
-									})
-								: "Ainda não definido"}
-						</Text>
-					</View>
+								<Text style={styles.dateHint}>
+									{expiresAt
+										? expiresAt.toLocaleTimeString(
+												"pt-BR",
+												{
+													hour: "2-digit",
+													minute: "2-digit",
+												},
+											)
+										: "Ainda não definido"}
+								</Text>
+							</View>
 
-					<Feather name="chevron-right" size={20} color="#777777" />
-				</Pressable>
+							<Feather
+								name="chevron-right"
+								size={20}
+								color="#777777"
+							/>
+						</Pressable>
+					</>
+				) : (
+					<>
+						<Text style={styles.label}>Exibir todo ano em</Text>
+
+						<Pressable
+							style={styles.dateButton}
+							onPress={openYearlyPicker}
+						>
+							<View>
+								<Text style={styles.datePlaceholder}>
+									{yearlyDate
+										? formatYearlyDate(yearlyDate)
+										: "Definir dia e mês"}
+								</Text>
+
+								<Text style={styles.dateHint}>Dia inteiro</Text>
+							</View>
+
+							<Feather
+								name="chevron-right"
+								size={20}
+								color="#777777"
+							/>
+						</Pressable>
+					</>
+				)}
 
 				<View style={styles.rules}>
 					<Text style={styles.rulesTitle}>Como vai funcionar</Text>
 
 					<Text style={styles.rule}>
-						• SYNC faz o quadro buscar a foto imediatamente.
+						• SYNC faz o quadro buscar as alterações imediatamente.
 					</Text>
 
-					<Text style={styles.rule}>
-						• NEXT descarta a foto temporária antes do vencimento.
-					</Text>
+					{recurrence === "once" ? (
+						<>
+							<Text style={styles.rule}>
+								• NEXT descarta a foto temporária antes do
+								vencimento.
+							</Text>
 
-					<Text style={styles.rule}>
-						• Após expirar, a foto é removida e não fica no
-						histórico.
-					</Text>
+							<Text style={styles.rule}>
+								• Após expirar, a foto é removida e não fica no
+								histórico.
+							</Text>
+						</>
+					) : (
+						<Text style={styles.rule}>
+							• A foto fica ativa somente no dia escolhido, todos
+							os anos.
+						</Text>
+					)}
 				</View>
 
 				<Pressable
@@ -393,11 +622,13 @@ export default function TemporaryPhotoScreen() {
 						<ActivityIndicator color="#ffffff" />
 					) : (
 						<Text style={styles.sendButtonText}>
-							Enviar foto temporária
+							{recurrence === "once"
+								? "Enviar foto temporária"
+								: "Enviar recorrência anual"}
 						</Text>
 					)}
 				</Pressable>
-			</View>
+			</ScrollView>
 
 			<Modal
 				visible={isPickerOpen}
@@ -632,6 +863,123 @@ export default function TemporaryPhotoScreen() {
 					</Pressable>
 				</Pressable>
 			</Modal>
+
+			<Modal
+				visible={isYearlyPickerOpen}
+				transparent
+				animationType="fade"
+				onRequestClose={() => {
+					setIsYearlyPickerOpen(false);
+				}}
+			>
+				<Pressable
+					style={styles.modalOverlay}
+					onPress={() => {
+						setIsYearlyPickerOpen(false);
+					}}
+				>
+					<Pressable
+						style={styles.pickerCard}
+						onPress={(event) => {
+							event.stopPropagation();
+						}}
+					>
+						<View style={styles.pickerHeader}>
+							<View>
+								<Text style={styles.pickerTitle}>
+									Recorrência anual
+								</Text>
+
+								<Text style={styles.pickerSubtitle}>
+									Escolha o dia e o mês
+								</Text>
+							</View>
+
+							<Pressable
+								style={styles.closeButton}
+								onPress={() => {
+									setIsYearlyPickerOpen(false);
+								}}
+							>
+								<Feather name="x" size={21} color="#555555" />
+							</Pressable>
+						</View>
+
+						<View style={styles.yearlySelectors}>
+							<View style={styles.yearlySelectorColumn}>
+								<Text style={styles.pickerLabel}>Mês</Text>
+
+								<Pressable
+									style={styles.yearlyArrow}
+									onPress={() => changeYearlyMonth(1)}
+								>
+									<Feather
+										name="chevron-up"
+										size={23}
+										color="#333333"
+									/>
+								</Pressable>
+
+								<Text style={styles.yearlyMonthValue}>
+									{MONTH_NAMES[draftYearlyDate.month - 1]}
+								</Text>
+
+								<Pressable
+									style={styles.yearlyArrow}
+									onPress={() => changeYearlyMonth(-1)}
+								>
+									<Feather
+										name="chevron-down"
+										size={23}
+										color="#333333"
+									/>
+								</Pressable>
+							</View>
+
+							<View style={styles.yearlySelectorColumn}>
+								<Text style={styles.pickerLabel}>Dia</Text>
+
+								<Pressable
+									style={styles.yearlyArrow}
+									onPress={() => changeYearlyDay(1)}
+								>
+									<Feather
+										name="chevron-up"
+										size={23}
+										color="#333333"
+									/>
+								</Pressable>
+
+								<Text style={styles.yearlyDayValue}>
+									{draftYearlyDate.day
+										.toString()
+										.padStart(2, "0")}
+								</Text>
+
+								<Pressable
+									style={styles.yearlyArrow}
+									onPress={() => changeYearlyDay(-1)}
+								>
+									<Feather
+										name="chevron-down"
+										size={23}
+										color="#333333"
+									/>
+								</Pressable>
+							</View>
+						</View>
+
+						<Pressable
+							style={styles.confirmButton}
+							onPress={confirmYearlyDate}
+						>
+							<Text style={styles.confirmButtonText}>
+								Confirmar
+							</Text>
+						</Pressable>
+					</Pressable>
+				</Pressable>
+			</Modal>
 		</>
 	);
 }
@@ -641,8 +989,11 @@ const styles = StyleSheet.create({
 		flex: 1,
 
 		backgroundColor: "#ffffff",
+	},
 
+	content: {
 		padding: 24,
+		paddingBottom: 32,
 	},
 
 	imagePlaceholder: {
@@ -747,6 +1098,43 @@ const styles = StyleSheet.create({
 		fontSize: 15,
 
 		fontWeight: "600",
+	},
+
+	recurrenceSelector: {
+		flexDirection: "row",
+
+		gap: 10,
+	},
+
+	recurrenceButton: {
+		flex: 1,
+
+		paddingVertical: 12,
+
+		borderWidth: 1,
+		borderColor: "#dddddd",
+
+		borderRadius: 10,
+
+		alignItems: "center",
+	},
+
+	recurrenceButtonSelected: {
+		backgroundColor: "#111111",
+
+		borderColor: "#111111",
+	},
+
+	recurrenceButtonText: {
+		fontSize: 14,
+
+		fontWeight: "600",
+
+		color: "#444444",
+	},
+
+	recurrenceButtonTextSelected: {
+		color: "#ffffff",
 	},
 
 	dateButton: {
@@ -1059,6 +1447,67 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 
 		color: "#b00020",
+	},
+
+	yearlySelectors: {
+		flexDirection: "row",
+
+		gap: 14,
+
+		marginTop: 4,
+	},
+
+	yearlySelectorColumn: {
+		flex: 1,
+
+		alignItems: "center",
+	},
+
+	yearlyArrow: {
+		width: "100%",
+
+		height: 40,
+
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	yearlyMonthValue: {
+		width: "100%",
+
+		paddingVertical: 14,
+
+		borderWidth: 1,
+		borderColor: "#dddddd",
+
+		borderRadius: 10,
+
+		textAlign: "center",
+
+		fontSize: 17,
+		fontWeight: "600",
+
+		color: "#111111",
+	},
+
+	yearlyDayValue: {
+		width: "100%",
+
+		paddingVertical: 9,
+
+		borderWidth: 1,
+		borderColor: "#dddddd",
+
+		borderRadius: 10,
+
+		textAlign: "center",
+
+		fontSize: 28,
+		fontWeight: "600",
+
+		color: "#111111",
+
+		fontVariant: ["tabular-nums"],
 	},
 
 	confirmButton: {

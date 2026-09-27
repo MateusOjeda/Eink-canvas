@@ -85,6 +85,8 @@ export async function uploadTemporaryPhoto({
 		width,
 		height,
 
+		recurrence: "once",
+
 		expiresAt: Timestamp.fromDate(expiresAt),
 
 		createdAt: serverTimestamp(),

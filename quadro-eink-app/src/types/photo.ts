@@ -15,7 +15,12 @@ export type Photo = {
 	description?: string;
 };
 
-export type TemporaryPhoto = {
+export type YearlyDate = {
+	month: number;
+	day: number;
+};
+
+type TemporaryPhotoBase = {
 	id: string;
 
 	createdByUid: string;
@@ -25,6 +30,14 @@ export type TemporaryPhoto = {
 
 	width: number;
 	height: number;
-
-	expiresAt: Date;
 };
+
+export type TemporaryPhoto =
+	| (TemporaryPhotoBase & {
+			recurrence: "once";
+			expiresAt: Date;
+	  })
+	| (TemporaryPhotoBase & {
+			recurrence: "yearly";
+			yearlyDate: YearlyDate;
+	  });

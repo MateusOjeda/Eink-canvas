@@ -11,18 +11,17 @@ import {
 	View,
 } from "react-native";
 
-import {
-	router,
-	useFocusEffect,
-	useLocalSearchParams,
-	Stack,
-} from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { deleteTemporaryPhoto, getTemporaryPhotos } from "@/firebase/photos";
+
+import { getDevice } from "@/firebase/devices";
 
 import { getCachedStorageFileUri } from "@/firebase/storage";
 
 import type { TemporaryPhoto } from "@/types/photo";
+
+import type { DisplayOrientation } from "@/types/display";
 
 type TemporaryPhotoWithPreview = TemporaryPhoto & {
 	previewUri: string;
@@ -37,12 +36,28 @@ function formatExpiration(date: Date) {
 	});
 }
 
+function formatYearlyDate(date: { month: number; day: number }) {
+	const value = new Date(2024, date.month - 1, date.day);
+
+	return value.toLocaleDateString("pt-BR", {
+		day: "2-digit",
+		month: "long",
+	});
+}
+
+function getPhotoOrientation(photo: TemporaryPhoto): DisplayOrientation {
+	return photo.width > photo.height ? "landscape" : "portrait";
+}
+
 export default function TemporaryPhotosScreen() {
 	const { deviceId } = useLocalSearchParams<{
 		deviceId: string;
 	}>();
 
 	const [photos, setPhotos] = useState<TemporaryPhotoWithPreview[]>([]);
+
+	const [deviceOrientation, setDeviceOrientation] =
+		useState<DisplayOrientation | null>(null);
 
 	const [loading, setLoading] = useState(true);
 
@@ -56,7 +71,12 @@ export default function TemporaryPhotosScreen() {
 		try {
 			setLoading(true);
 
-			const temporaryPhotos = await getTemporaryPhotos(deviceId);
+			const [temporaryPhotos, device] = await Promise.all([
+				getTemporaryPhotos(deviceId),
+				getDevice(deviceId),
+			]);
+
+			setDeviceOrientation(device?.orientation ?? null);
 
 			const photosWithPreview = await Promise.all(
 				temporaryPhotos.map(async (photo) => ({
@@ -92,7 +112,7 @@ export default function TemporaryPhotosScreen() {
 	const handleDelete = (photo: TemporaryPhotoWithPreview) => {
 		Alert.alert(
 			"Excluir foto",
-			"Tem certeza que deseja excluir esta foto temporária?",
+			"Tem certeza que deseja excluir esta foto?",
 			[
 				{
 					text: "Cancelar",
@@ -163,30 +183,63 @@ export default function TemporaryPhotosScreen() {
 							</Text>
 
 							<Text style={styles.emptyText}>
-								As fotos enviadas temporariamente para este
+								As fotos temporárias e recorrências anuais deste
 								quadro aparecerão aqui.
 							</Text>
 						</View>
 					) : (
-						photos.map((photo) => (
-							<View key={photo.id} style={styles.photoCard}>
-								<Image
-									source={{
-										uri: photo.previewUri,
-									}}
-									style={styles.preview}
-									resizeMode="contain"
-								/>
+						photos.map((photo) => {
+							const orientationIncompatible =
+								deviceOrientation !== null &&
+								getPhotoOrientation(photo) !== deviceOrientation;
 
-								<View style={styles.photoFooter}>
+							return (
+								<View key={photo.id} style={styles.photoCard}>
+									<View style={styles.previewContainer}>
+										<Image
+											source={{
+												uri: photo.previewUri,
+											}}
+											style={styles.preview}
+											resizeMode="contain"
+										/>
+
+										{orientationIncompatible && (
+											<View style={styles.orientationWarning}>
+												<Text style={styles.orientationWarningText}>
+													Orientação incompatível
+												</Text>
+											</View>
+										)}
+									</View>
+
+									<View style={styles.photoFooter}>
 									<View style={styles.expirationContainer}>
-										<Text style={styles.expirationLabel}>
-											Expira em
-										</Text>
+										{photo.recurrence === "once" ? (
+											<>
+												<Text style={styles.expirationLabel}>
+													Expira em
+												</Text>
 
-										<Text style={styles.expirationValue}>
-											{formatExpiration(photo.expiresAt)}
-										</Text>
+												<Text style={styles.expirationValue}>
+													{formatExpiration(
+														photo.expiresAt,
+													)}
+												</Text>
+											</>
+										) : (
+											<>
+												<Text style={styles.expirationLabel}>
+													Todo ano
+												</Text>
+
+												<Text style={styles.expirationValue}>
+													{formatYearlyDate(
+														photo.yearlyDate,
+													)}
+												</Text>
+											</>
+										)}
 									</View>
 
 									<Pressable
@@ -210,8 +263,9 @@ export default function TemporaryPhotosScreen() {
 										)}
 									</Pressable>
 								</View>
-							</View>
-						))
+								</View>
+							);
+						})
 					)}
 
 					<Pressable style={styles.addButton} onPress={handleAdd}>
@@ -283,11 +337,42 @@ const styles = StyleSheet.create({
 		backgroundColor: "#ffffff",
 	},
 
+	previewContainer: {
+		position: "relative",
+	},
+
 	preview: {
 		width: "100%",
 		aspectRatio: 4 / 3,
 
 		backgroundColor: "#f5f5f5",
+	},
+
+	orientationWarning: {
+		position: "absolute",
+
+		left: 12,
+		right: 12,
+		bottom: 12,
+
+		paddingHorizontal: 12,
+		paddingVertical: 9,
+
+		borderRadius: 10,
+
+		backgroundColor: "rgba(255, 255, 255, 0.94)",
+
+		borderWidth: 1,
+		borderColor: "#dddddd",
+
+		alignItems: "center",
+	},
+
+	orientationWarningText: {
+		fontSize: 13,
+		fontWeight: "600",
+
+		color: "#555555",
 	},
 
 	photoFooter: {

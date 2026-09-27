@@ -41,9 +41,19 @@ type UploadTemporaryPhotoParams = {
 
 	width: number;
 	height: number;
-
-	expiresAt: Date;
-};
+} & (
+	| {
+			recurrence: "once";
+			expiresAt: Date;
+	  }
+	| {
+			recurrence: "yearly";
+			yearlyDate: {
+				month: number;
+				day: number;
+			};
+	  }
+);
 
 export async function getTemporaryPhotos(
 	deviceId: string,
@@ -57,7 +67,7 @@ export async function getTemporaryPhotos(
 	return snapshot.docs.map((document) => {
 		const data = document.data();
 
-		return {
+		const base = {
 			id: document.id,
 
 			createdByUid: data.createdByUid,
@@ -67,8 +77,27 @@ export async function getTemporaryPhotos(
 
 			width: data.width,
 			height: data.height,
+		};
 
-			expiresAt: data.expiresAt.toDate(),
+		if (data.recurrence === "once") {
+			return {
+				...base,
+
+				recurrence: "once" as const,
+
+				expiresAt: data.expiresAt.toDate(),
+			};
+		}
+
+		return {
+			...base,
+
+			recurrence: "yearly" as const,
+
+			yearlyDate: {
+				month: data.yearlyDate.month,
+				day: data.yearlyDate.day,
+			},
 		};
 	});
 }
@@ -200,52 +229,39 @@ export async function savePhoto({
 	return imageId;
 }
 
-export async function uploadTemporaryPhoto({
-	deviceId,
+export async function uploadTemporaryPhoto(
+	params: UploadTemporaryPhotoParams,
+): Promise<string> {
+	const {
+		deviceId,
 
-	previewUri,
-	binUri,
+		previewUri,
+		binUri,
 
-	width,
-	height,
+		width,
+		height,
 
-	expiresAt,
-}: UploadTemporaryPhotoParams): Promise<string> {
+		recurrence,
+	} = params;
+
 	const user = auth.currentUser;
 
 	if (!user) {
 		throw new Error("Usuário não autenticado.");
 	}
 
-	/*
-	 * Gera um ID do Firestore,
-	 * mas ainda NÃO cria o documento.
-	 */
 	const photoRef = doc(
 		collection(db, "devices", deviceId, "temporaryPhotos"),
 	);
 
 	const photoId = photoRef.id;
 
-	/*
-	 * A estrutura do Storage precisa respeitar:
-	 *
-	 * devices/{deviceId}/temporaryPhotos/{uid}/{fileName}
-	 *
-	 * pois é esse o formato usado nas Storage Rules.
-	 */
 	const basePath = `devices/${deviceId}` + `/temporaryPhotos/${user.uid}`;
 
 	const previewPath = `${basePath}/${photoId}-preview.png`;
 
 	const epaperFilePath = `${basePath}/${photoId}-display.bin`;
 
-	/*
-	 * Primeiro enviamos os arquivos.
-	 *
-	 * O documento do Firestore só é criado
-	 * quando os dois uploads terminarem.
-	 */
 	await Promise.all([
 		uploadLocalFile(previewUri, previewPath, "image/png"),
 
@@ -261,7 +277,15 @@ export async function uploadTemporaryPhoto({
 		width,
 		height,
 
-		expiresAt: Timestamp.fromDate(expiresAt),
+		recurrence,
+
+		...(recurrence === "once"
+			? {
+					expiresAt: Timestamp.fromDate(params.expiresAt),
+				}
+			: {
+					yearlyDate: params.yearlyDate,
+				}),
 
 		createdAt: serverTimestamp(),
 	});
