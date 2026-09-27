@@ -78,6 +78,7 @@ export async function uploadTemporaryPhoto({
 	 */
 	await setDoc(photoRef, {
 		createdByUid: user.uid,
+		createdByEmail: user.email,
 
 		previewPath,
 		epaperFilePath,

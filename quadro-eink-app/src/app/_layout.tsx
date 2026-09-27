@@ -1,6 +1,6 @@
 import "react-native-gesture-handler";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
@@ -10,9 +10,13 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { NavigationBar } from "expo-navigation-bar";
 
+import * as Notifications from "expo-notifications";
+
 import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { auth } from "@/firebase/config";
+
+import { registerExpoPushToken } from "@/notifications/push";
 
 export default function RootLayout() {
 	const pathname = usePathname();
@@ -20,6 +24,8 @@ export default function RootLayout() {
 	const [user, setUser] = useState<User | null>(null);
 
 	const [authReady, setAuthReady] = useState(false);
+
+	const handledNotification = useRef<string | null>(null);
 
 	useEffect(() => {
 		const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -29,6 +35,66 @@ export default function RootLayout() {
 
 		return unsubscribe;
 	}, []);
+
+	useEffect(() => {
+		if (!authReady || !user) {
+			return;
+		}
+
+		registerExpoPushToken(user.uid).catch((error) => {
+			console.error("Erro ao registrar Expo Push Token:", error);
+		});
+	}, [authReady, user]);
+
+	useEffect(() => {
+		if (!authReady || !user) {
+			return;
+		}
+
+		const handleNotificationResponse = (
+			response: Notifications.NotificationResponse,
+		) => {
+			const notificationId = response.notification.request.identifier;
+
+			if (handledNotification.current === notificationId) {
+				return;
+			}
+
+			const data = response.notification.request.content.data;
+
+			if (
+				!data ||
+				data.type !== "scheduled-photo" ||
+				typeof data.deviceId !== "string"
+			) {
+				return;
+			}
+
+			handledNotification.current = notificationId;
+
+			router.push({
+				pathname: "/device/[deviceId]/temporary-photos",
+				params: {
+					deviceId: data.deviceId,
+				},
+			});
+		};
+
+		const response = Notifications.getLastNotificationResponse();
+
+		if (response) {
+			handleNotificationResponse(response);
+		}
+
+		const subscription =
+			Notifications.addNotificationResponseReceivedListener(
+				handleNotificationResponse,
+			);
+
+		return () => {
+			subscription.remove();
+		};
+	}, [authReady, user]);
 
 	useEffect(() => {
 		if (!authReady) {

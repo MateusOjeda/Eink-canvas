@@ -2,6 +2,9 @@
 
 .env.local
 
+einkcanvas-firebase-adminsdk-fbsvc-380c0d656b.json
+einkcanvas-recipient-key.txt
+
 # dependencies
 node_modules/
 
