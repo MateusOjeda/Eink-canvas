@@ -252,14 +252,32 @@ export default function TemporaryPhotosScreen() {
 										{orientationIncompatible ? (
 											<View
 												style={
-													styles.orientationWarning
+													styles.orientationMismatchOverlay
 												}
 											>
-												<Ionicons
-													name="warning-outline"
-													size={15}
-													color={colors.textSecondary}
-												/>
+												<View
+													style={
+														styles.orientationMismatchLabel
+													}
+												>
+													<Text
+														style={
+															styles.orientationMismatchText
+														}
+														numberOfLines={1}
+													>
+														Orientação
+													</Text>
+
+													<Text
+														style={
+															styles.orientationMismatchText
+														}
+														numberOfLines={1}
+													>
+														incompatível
+													</Text>
+												</View>
 											</View>
 										) : null}
 									</View>
@@ -309,16 +327,6 @@ export default function TemporaryPhotosScreen() {
 											<Text style={styles.senderText}>
 												Enviada por:{" "}
 												{photo.createdByEmail}
-											</Text>
-										) : null}
-
-										{orientationIncompatible ? (
-											<Text
-												style={
-													styles.orientationWarningText
-												}
-											>
-												Orientação incompatível
 											</Text>
 										) : null}
 									</View>
@@ -396,7 +404,14 @@ const styles = StyleSheet.create({
 
 	previewContainer: {
 		position: "relative",
+
+		width: 92,
+		height: 122,
+
 		flexShrink: 0,
+
+		borderRadius: radius.md,
+		overflow: "hidden",
 	},
 
 	preview: {
@@ -406,16 +421,36 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.surfaceMuted,
 	},
 
-	orientationWarning: {
+	orientationMismatchOverlay: {
 		position: "absolute",
-		left: spacing.xs,
-		bottom: spacing.xs,
-		width: 26,
-		height: 26,
-		borderRadius: radius.pill,
-		backgroundColor: colors.surface,
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+
+		padding: spacing.sm,
+
+		borderRadius: radius.md,
+
+		backgroundColor: "rgba(70, 70, 70, 0.42)",
+
 		alignItems: "center",
 		justifyContent: "center",
+	},
+
+	orientationMismatchLabel: {
+		width: "100%",
+		alignItems: "center",
+	},
+
+	orientationMismatchText: {
+		...typography.caption,
+		fontWeight: "600",
+		color: colors.white,
+		textAlign: "center",
+
+		fontSize: 11,
+		lineHeight: 14,
 	},
 
 	photoInfo: {
@@ -448,12 +483,6 @@ const styles = StyleSheet.create({
 		marginTop: spacing.xs,
 		...typography.body,
 		color: colors.textSecondary,
-	},
-
-	orientationWarningText: {
-		marginTop: spacing.sm,
-		...typography.caption,
-		color: colors.textMuted,
 	},
 
 	deleteButton: {

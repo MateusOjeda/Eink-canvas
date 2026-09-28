@@ -21,6 +21,7 @@ import { Screen } from "@/components/layout/Screen";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { SuccessFlash } from "@/components/ui/SuccessFlash";
 
 import { colors, radius, spacing, typography } from "@/theme";
 
@@ -102,6 +103,8 @@ export default function TemporaryPhotoScreen() {
 		imageWidth?: string;
 		imageHeight?: string;
 	}>();
+
+	const [showSuccess, setShowSuccess] = useState(false);
 
 	const [deviceName, setDeviceName] = useState("");
 
@@ -297,20 +300,7 @@ export default function TemporaryPhotoScreen() {
 				});
 			}
 
-			Alert.alert(
-				"Foto enviada",
-				recurrence === "once"
-					? "A foto agendada foi enviada com sucesso."
-					: "A recorrência anual foi salva com sucesso.",
-				[
-					{
-						text: "OK",
-						onPress: () => {
-							router.back();
-						},
-					},
-				],
-			);
+			setShowSuccess(true);
 		} catch (error) {
 			console.error("Erro ao enviar foto agendada:", error);
 
@@ -783,6 +773,12 @@ export default function TemporaryPhotoScreen() {
 					</Pressable>
 				</Pressable>
 			</Modal>
+			{showSuccess && (
+				<SuccessFlash
+					message="Foto adicionada com sucesso!"
+					onFinished={() => router.back()}
+				/>
+			)}
 		</>
 	);
 }

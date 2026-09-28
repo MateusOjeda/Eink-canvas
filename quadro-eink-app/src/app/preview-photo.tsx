@@ -14,11 +14,7 @@ import {
 	View,
 } from "react-native";
 
-import {
-	router,
-	Stack,
-	useLocalSearchParams,
-} from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 
 import { Directory, File, Paths } from "expo-file-system";
 
@@ -27,13 +23,9 @@ import { Feather } from "@expo/vector-icons";
 import { Screen } from "@/components/layout/Screen";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { SuccessFlash } from "@/components/ui/SuccessFlash";
 
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from "@/theme";
+import { colors, radius, spacing, typography } from "@/theme";
 
 import { savePhoto } from "@/firebase/photos";
 import { getDevice } from "@/firebase/devices";
@@ -58,23 +50,18 @@ export default function PreviewPhotoScreen() {
 	const [description, setDescription] = useState("");
 
 	const [deviceName, setDeviceName] = useState("");
-	const [collectionName, setCollectionName] =
-		useState("");
-	const [loadingContext, setLoadingContext] =
-		useState(true);
+	const [collectionName, setCollectionName] = useState("");
+	const [loadingContext, setLoadingContext] = useState(true);
+	const [showSuccess, setShowSuccess] = useState(false);
 
 	const imageWidth = Number(params.imageWidth);
 	const imageHeight = Number(params.imageHeight);
 
 	const { width: screenWidth } = useWindowDimensions();
 
-	const previewAspectRatio =
-		imageWidth / imageHeight;
+	const previewAspectRatio = imageWidth / imageHeight;
 
-	const previewMaxWidth = Math.min(
-		screenWidth - spacing.xxl * 2,
-		320,
-	);
+	const previewMaxWidth = Math.min(screenWidth - spacing.xxl * 2, 320);
 
 	const previewMaxHeight = 240;
 
@@ -90,34 +77,21 @@ export default function PreviewPhotoScreen() {
 		return { width, height };
 	})();
 
-	const previewUri = Paths.join(
-		Paths.cache,
-		params.fileName,
-	);
+	const previewUri = Paths.join(Paths.cache, params.fileName);
 
-	const thumbnailUri = Paths.join(
-		Paths.cache,
-		params.thumbnailFileName,
-	);
+	const thumbnailUri = Paths.join(Paths.cache, params.thumbnailFileName);
 
-	const binUri = Paths.join(
-		Paths.cache,
-		params.binFileName,
-	);
+	const binUri = Paths.join(Paths.cache, params.binFileName);
 
 	useEffect(() => {
 		let isMounted = true;
 
 		const loadContext = async () => {
 			try {
-				const [device, collection] =
-					await Promise.all([
-						getDevice(params.deviceId),
-						getPhotoCollection(
-							params.deviceId,
-							params.collectionId,
-						),
-					]);
+				const [device, collection] = await Promise.all([
+					getDevice(params.deviceId),
+					getPhotoCollection(params.deviceId, params.collectionId),
+				]);
 
 				if (!isMounted) {
 					return;
@@ -128,15 +102,10 @@ export default function PreviewPhotoScreen() {
 				}
 
 				if (collection) {
-					setCollectionName(
-						collection.name,
-					);
+					setCollectionName(collection.name);
 				}
 			} catch (error) {
-				console.error(
-					"Erro ao carregar contexto da prévia:",
-					error,
-				);
+				console.error("Erro ao carregar contexto da prévia:", error);
 			} finally {
 				if (isMounted) {
 					setLoadingContext(false);
@@ -152,10 +121,7 @@ export default function PreviewPhotoScreen() {
 	}, [params.deviceId, params.collectionId]);
 
 	const subtitle = useMemo(
-		() =>
-			[collectionName, deviceName]
-				.filter(Boolean)
-				.join(" · "),
+		() => [collectionName, deviceName].filter(Boolean).join(" · "),
 		[collectionName, deviceName],
 	);
 
@@ -164,22 +130,17 @@ export default function PreviewPhotoScreen() {
 			const sourceFile = new File(binUri);
 
 			if (!sourceFile.exists) {
-				throw new Error(
-					"Arquivo .bin não encontrado.",
-				);
+				throw new Error("Arquivo .bin não encontrado.");
 			}
 
-			const destinationDirectory =
-				await Directory.pickDirectoryAsync();
+			const destinationDirectory = await Directory.pickDirectoryAsync();
 
-			const outputName =
-				`quadro-eink-${imageWidth}x${imageHeight}-${Date.now()}.bin`;
+			const outputName = `quadro-eink-${imageWidth}x${imageHeight}-${Date.now()}.bin`;
 
-			const outputFile =
-				destinationDirectory.createFile(
-					outputName,
-					"application/octet-stream",
-				);
+			const outputFile = destinationDirectory.createFile(
+				outputName,
+				"application/octet-stream",
+			);
 
 			const bytes = await sourceFile.bytes();
 
@@ -190,10 +151,7 @@ export default function PreviewPhotoScreen() {
 				`${outputName}\n\n${bytes.length.toLocaleString()} bytes`,
 			);
 		} catch (error) {
-			console.log(
-				"Download do .bin cancelado ou falhou:",
-				error,
-			);
+			console.log("Download do .bin cancelado ou falhou:", error);
 		}
 	};
 
@@ -215,26 +173,11 @@ export default function PreviewPhotoScreen() {
 				description,
 			});
 
-			router.dismissTo({
-				pathname:
-					"/device/[deviceId]/collection/[collectionId]",
-				params: {
-					deviceId:
-						params.deviceId,
-					collectionId:
-						params.collectionId,
-				},
-			});
+			setShowSuccess(true);
 		} catch (error) {
-			console.error(
-				"Erro ao salvar imagem:",
-				error,
-			);
+			console.error("Erro ao salvar imagem:", error);
 
-			Alert.alert(
-				"Erro",
-				"Não foi possível salvar a imagem.",
-			);
+			Alert.alert("Erro", "Não foi possível salvar a imagem.");
 		} finally {
 			setSaving(false);
 		}
@@ -243,9 +186,7 @@ export default function PreviewPhotoScreen() {
 	if (loadingContext) {
 		return (
 			<>
-				<Stack.Screen
-					options={{ headerShown: false }}
-				/>
+				<Stack.Screen options={{ headerShown: false }} />
 
 				<Screen>
 					<View style={styles.loading}>
@@ -261,23 +202,15 @@ export default function PreviewPhotoScreen() {
 
 	return (
 		<>
-			<Stack.Screen
-				options={{ headerShown: false }}
-			/>
+			<Stack.Screen options={{ headerShown: false }} />
 
 			<KeyboardAvoidingView
 				style={styles.keyboardView}
-				behavior={
-					Platform.OS === "ios"
-						? "padding"
-						: "height"
-				}
+				behavior={Platform.OS === "ios" ? "padding" : "height"}
 			>
 				<Screen
 					scroll
-					contentContainerStyle={
-						styles.screenContent
-					}
+					contentContainerStyle={styles.screenContent}
 					keyboardShouldPersistTaps="handled"
 				>
 					<ScreenHeader
@@ -297,10 +230,8 @@ export default function PreviewPhotoScreen() {
 							style={[
 								styles.image,
 								{
-									width:
-										previewSize.width,
-									height:
-										previewSize.height,
+									width: previewSize.width,
+									height: previewSize.height,
 								},
 							]}
 							resizeMode="contain"
@@ -308,16 +239,14 @@ export default function PreviewPhotoScreen() {
 					</View>
 
 					<Text style={styles.hint}>
-						Esta é a imagem já convertida
-						para as cores da tela.
+						Esta é a imagem já convertida para as cores da tela.
 					</Text>
 
 					<Pressable
 						onPress={downloadBin}
 						style={({ pressed }) => [
 							styles.downloadButton,
-							pressed &&
-								styles.pressed,
+							pressed && styles.pressed,
 						]}
 					>
 						<Feather
@@ -326,63 +255,33 @@ export default function PreviewPhotoScreen() {
 							color={colors.text}
 						/>
 
-						<Text
-							style={
-								styles.downloadButtonText
-							}
-						>
+						<Text style={styles.downloadButtonText}>
 							Baixar .bin
 						</Text>
 					</Pressable>
 
-					<View
-						style={
-							styles.descriptionSection
-						}
-					>
-						<Text
-							style={
-								styles.descriptionLabel
-							}
-						>
-							Descrição
-						</Text>
+					<View style={styles.descriptionSection}>
+						<Text style={styles.descriptionLabel}>Descrição</Text>
 
 						<TextInput
 							value={description}
 							onChangeText={setDescription}
 							multiline
-							maxLength={
-								MAX_PHOTO_DESCRIPTION_LENGTH
-							}
+							maxLength={MAX_PHOTO_DESCRIPTION_LENGTH}
 							textAlignVertical="top"
 							placeholder="Quem está na foto? O que aconteceu? O que você quer lembrar?"
-							placeholderTextColor={
-								colors.textMuted
-							}
-							style={
-								styles.descriptionInput
-							}
+							placeholderTextColor={colors.textMuted}
+							style={styles.descriptionInput}
 						/>
 
-						<Text
-							style={
-								styles.descriptionCounter
-							}
-						>
+						<Text style={styles.descriptionCounter}>
 							{description.length} /{" "}
-							{
-								MAX_PHOTO_DESCRIPTION_LENGTH
-							}
+							{MAX_PHOTO_DESCRIPTION_LENGTH}
 						</Text>
 					</View>
 
 					<PrimaryButton
-						title={
-							saving
-								? "Salvando..."
-								: "Usar imagem"
-						}
+						title={saving ? "Salvando..." : "Usar imagem"}
 						onPress={useImage}
 						loading={saving}
 						style={styles.useButton}
@@ -396,6 +295,22 @@ export default function PreviewPhotoScreen() {
 					/>
 				</Screen>
 			</KeyboardAvoidingView>
+
+			{showSuccess && (
+				<SuccessFlash
+					message="Foto adicionada com sucesso!"
+					onFinished={() =>
+						router.dismissTo({
+							pathname:
+								"/device/[deviceId]/collection/[collectionId]",
+							params: {
+								deviceId: params.deviceId,
+								collectionId: params.collectionId,
+							},
+						})
+					}
+				/>
+			)}
 		</>
 	);
 }

@@ -119,12 +119,6 @@ export default function AddPhotoScreen() {
 			setSelectedImageUri(copiedFile.uri);
 			setImageWidth(image.width);
 			setImageHeight(image.height);
-
-			if (photoMode === "collection") {
-				setOrientation(
-					image.height > image.width ? "portrait" : "landscape",
-				);
-			}
 		},
 		[photoMode],
 	);
@@ -257,11 +251,24 @@ export default function AddPhotoScreen() {
 					<View style={styles.content}>
 						{selectedImageUri ? (
 							<>
-								<Image
-									source={{ uri: selectedImageUri }}
-									style={styles.image}
-									resizeMode="contain"
-								/>
+								<View style={styles.imageFrame}>
+									{selectedImageUri &&
+									imageWidth &&
+									imageHeight ? (
+										<Image
+											source={{ uri: selectedImageUri }}
+											style={[
+												styles.image,
+												{
+													aspectRatio:
+														imageWidth /
+														imageHeight,
+												},
+											]}
+											resizeMode="contain"
+										/>
+									) : null}
+								</View>
 
 								<Pressable
 									onPress={clearImage}
@@ -505,8 +512,22 @@ const styles = StyleSheet.create({
 
 	image: {
 		width: "100%",
-		height: 360,
+		maxHeight: 550,
 		borderRadius: radius.xl,
+	},
+
+	imageFrame: {
+		width: "100%",
+
+		padding: 8,
+
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: radius.xl,
+
+		backgroundColor: colors.surfaceMuted,
+
+		alignItems: "center",
 	},
 
 	removeButton: {
