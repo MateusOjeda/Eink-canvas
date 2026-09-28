@@ -4,23 +4,34 @@ import {
 	ActivityIndicator,
 	Alert,
 	Image,
-	Pressable,
-	ScrollView,
 	StyleSheet,
 	Text,
 	View,
 } from "react-native";
 
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import {
+	router,
+	Stack,
+	useFocusEffect,
+	useLocalSearchParams,
+} from "expo-router";
+
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+
+import { Screen } from "@/components/layout/Screen";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { Card } from "@/components/ui/Card";
+import { IconButton } from "@/components/ui/IconButton";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+
+import { colors, radius, spacing, typography } from "@/theme";
 
 import { deleteTemporaryPhoto, getTemporaryPhotos } from "@/firebase/photos";
 
 import { getDevice } from "@/firebase/devices";
-
 import { getCachedStorageFileUri } from "@/firebase/storage";
 
 import type { TemporaryPhoto } from "@/types/photo";
-
 import type { DisplayOrientation } from "@/types/display";
 
 type TemporaryPhotoWithPreview = TemporaryPhoto & {
@@ -54,7 +65,7 @@ function formatYearlyDate(date: { month: number; day: number }) {
 	const value = new Date(2024, date.month - 1, date.day);
 
 	return value.toLocaleDateString("pt-BR", {
-		day: "2-digit",
+		day: "numeric",
 		month: "long",
 	});
 }
@@ -70,11 +81,11 @@ export default function TemporaryPhotosScreen() {
 
 	const [photos, setPhotos] = useState<TemporaryPhotoWithPreview[]>([]);
 
+	const [deviceName, setDeviceName] = useState("");
 	const [deviceOrientation, setDeviceOrientation] =
 		useState<DisplayOrientation | null>(null);
 
 	const [loading, setLoading] = useState(true);
-
 	const [deletingId, setDeletingId] = useState<string | null>(null);
 
 	const loadPhotos = useCallback(async () => {
@@ -90,12 +101,12 @@ export default function TemporaryPhotosScreen() {
 				getDevice(deviceId),
 			]);
 
+			setDeviceName(device?.name ?? "");
 			setDeviceOrientation(device?.orientation ?? null);
 
 			const photosWithPreview = await Promise.all(
 				temporaryPhotos.map(async (photo) => ({
 					...photo,
-
 					previewUri: await getCachedStorageFileUri(
 						photo.previewPath,
 					),
@@ -105,18 +116,16 @@ export default function TemporaryPhotosScreen() {
 			setPhotos(photosWithPreview);
 		} catch (error) {
 			console.error("Erro ao carregar fotos agendadas:", error);
+
+			Alert.alert(
+				"Erro",
+				"Não foi possível carregar as fotos agendadas.",
+			);
 		} finally {
 			setLoading(false);
 		}
 	}, [deviceId]);
 
-	/*
-	 * Recarrega sempre que voltamos para
-	 * esta tela.
-	 *
-	 * Assim, depois de adicionar uma foto,
-	 * ela aparece automaticamente.
-	 */
 	useFocusEffect(
 		useCallback(() => {
 			loadPhotos();
@@ -132,11 +141,9 @@ export default function TemporaryPhotosScreen() {
 					text: "Cancelar",
 					style: "cancel",
 				},
-
 				{
 					text: "Excluir",
 					style: "destructive",
-
 					onPress: async () => {
 						try {
 							setDeletingId(photo.id);
@@ -168,7 +175,6 @@ export default function TemporaryPhotosScreen() {
 	const handleAdd = () => {
 		router.push({
 			pathname: "/device/[deviceId]/temporary-photo",
-
 			params: {
 				deviceId,
 			},
@@ -177,291 +183,291 @@ export default function TemporaryPhotosScreen() {
 
 	if (loading) {
 		return (
-			<View style={styles.loadingContainer}>
-				<ActivityIndicator size="large" />
-			</View>
+			<>
+				<Stack.Screen options={{ headerShown: false }} />
+
+				<View style={styles.loadingContainer}>
+					<ActivityIndicator size="large" color={colors.primary} />
+				</View>
+			</>
 		);
 	}
 
 	return (
 		<>
-			<View style={styles.container}>
-				<ScrollView
-					contentContainerStyle={styles.content}
-					showsVerticalScrollIndicator={false}
-				>
-					{photos.length === 0 ? (
-						<View style={styles.emptyContainer}>
-							<Text style={styles.emptyTitle}>
-								Nenhuma foto agendada
-							</Text>
+			<Stack.Screen options={{ headerShown: false }} />
 
-							<Text style={styles.emptyText}>
-								As fotos agendadas e recorrências anuais deste
-								quadro aparecerão aqui.
-							</Text>
-						</View>
-					) : (
-						photos.map((photo) => {
+			<Screen scroll>
+				<ScreenHeader
+					title="Fotos agendadas"
+					subtitle={deviceName}
+					showBackButton
+				/>
+
+				<PrimaryButton
+					title="Adicionar foto agendada"
+					onPress={handleAdd}
+					style={styles.addButton}
+					leftIcon={
+						<Ionicons name="add" size={28} color={colors.white} />
+					}
+				/>
+
+				{photos.length === 0 ? (
+					<View style={styles.emptyContainer}>
+						<Text style={styles.emptyTitle}>
+							Nenhuma foto agendada
+						</Text>
+
+						<Text style={styles.emptyText}>
+							As fotos por duração e recorrências anuais deste
+							quadro aparecerão aqui.
+						</Text>
+					</View>
+				) : (
+					<View style={styles.photoList}>
+						{photos.map((photo) => {
 							const orientationIncompatible =
 								deviceOrientation !== null &&
-								getPhotoOrientation(photo) !== deviceOrientation;
+								getPhotoOrientation(photo) !==
+									deviceOrientation;
+
+							const isDeleting = deletingId === photo.id;
 
 							return (
-								<View key={photo.id} style={styles.photoCard}>
+								<Card
+									key={photo.id}
+									style={styles.photoCard}
+									padding="sm"
+								>
 									<View style={styles.previewContainer}>
 										<Image
 											source={{
 												uri: photo.previewUri,
 											}}
 											style={styles.preview}
-											resizeMode="contain"
+											resizeMode="cover"
 										/>
 
-										{orientationIncompatible && (
-											<View style={styles.orientationWarning}>
-												<Text style={styles.orientationWarningText}>
-													Orientação incompatível
-												</Text>
+										{orientationIncompatible ? (
+											<View
+												style={
+													styles.orientationWarning
+												}
+											>
+												<Ionicons
+													name="warning-outline"
+													size={15}
+													color={colors.textSecondary}
+												/>
 											</View>
-										)}
+										) : null}
 									</View>
 
-									<View style={styles.photoFooter}>
-									<View style={styles.expirationContainer}>
-										{photo.recurrence === "once" ? (
-											<>
-												<Text style={styles.expirationLabel}>
-													Duração
-												</Text>
+									<View style={styles.photoInfo}>
+										<View style={styles.typeRow}>
+											{photo.recurrence === "once" ? (
+												<Feather
+													name="clock"
+													size={19}
+													color={colors.textSecondary}
+												/>
+											) : (
+												<MaterialCommunityIcons
+													name="calendar-month-outline"
+													size={20}
+													color={colors.textSecondary}
+												/>
+											)}
 
-												<Text style={styles.expirationValue}>
-													{formatDuration(
+											<Text style={styles.typeLabel}>
+												{photo.recurrence === "once"
+													? "Por duração"
+													: "Todo ano"}
+											</Text>
+										</View>
+
+										<Text style={styles.scheduleValue}>
+											{photo.recurrence === "once"
+												? formatDuration(
 														photo.durationMinutes,
-													)}
-												</Text>
-											</>
-										) : (
-											<>
-												<Text style={styles.expirationLabel}>
-													Todo ano
-												</Text>
-
-												<Text style={styles.expirationValue}>
-													{formatYearlyDate(
+													)
+												: formatYearlyDate(
 														photo.yearlyDate,
 													)}
-												</Text>
-											</>
-										)}
+										</Text>
+
+										<Text
+											style={styles.scheduleDescription}
+										>
+											{photo.recurrence === "once"
+												? "Aparece na próxima sincronização"
+												: "Exibição anual"}
+										</Text>
+
+										{photo.createdByEmail ? (
+											<Text style={styles.senderText}>
+												Enviada por:{" "}
+												{photo.createdByEmail}
+											</Text>
+										) : null}
+
+										{orientationIncompatible ? (
+											<Text
+												style={
+													styles.orientationWarningText
+												}
+											>
+												Orientação incompatível
+											</Text>
+										) : null}
 									</View>
 
-									<Pressable
-										style={[
-											styles.deleteButton,
-
-											deletingId === photo.id &&
-												styles.deleteButtonDisabled,
-										]}
-										disabled={deletingId === photo.id}
+									<IconButton
+										accessibilityLabel="Excluir foto"
+										disabled={isDeleting}
+										style={styles.deleteButton}
 										onPress={() => handleDelete(photo)}
-									>
-										{deletingId === photo.id ? (
-											<ActivityIndicator size="small" />
-										) : (
-											<Text
-												style={styles.deleteButtonText}
-											>
-												Excluir
-											</Text>
-										)}
-									</Pressable>
-								</View>
-								</View>
+										icon={
+											isDeleting ? (
+												<ActivityIndicator
+													size="small"
+													color={colors.textSecondary}
+												/>
+											) : (
+												<Ionicons
+													name="trash-outline"
+													size={21}
+													color={colors.textSecondary}
+												/>
+											)
+										}
+									/>
+								</Card>
 							);
-						})
-					)}
-
-					<Pressable style={styles.addButton} onPress={handleAdd}>
-						<Text style={styles.addButtonText}>+ Adicionar</Text>
-					</Pressable>
-				</ScrollView>
-			</View>
+						})}
+					</View>
+				)}
+			</Screen>
 		</>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-
-		backgroundColor: "#ffffff",
-	},
-
 	loadingContainer: {
 		flex: 1,
-
 		alignItems: "center",
 		justifyContent: "center",
-
-		backgroundColor: "#ffffff",
+		backgroundColor: colors.background,
 	},
 
-	content: {
-		padding: 16,
-		paddingBottom: 32,
+	addButton: {
+		marginBottom: spacing.xxl,
 	},
 
 	emptyContainer: {
 		paddingVertical: 60,
-
 		alignItems: "center",
 	},
 
 	emptyTitle: {
-		fontSize: 18,
-		fontWeight: "600",
-
-		color: "#222222",
+		...typography.emptyTitle,
+		color: colors.text,
 	},
 
 	emptyText: {
-		marginTop: 8,
-
+		marginTop: spacing.sm,
 		maxWidth: 280,
-
-		fontSize: 14,
-		lineHeight: 20,
-
-		color: "#777777",
-
+		...typography.body,
+		color: colors.textSecondary,
 		textAlign: "center",
 	},
 
+	photoList: {
+		gap: spacing.lg,
+	},
+
 	photoCard: {
-		marginBottom: 18,
-
-		borderWidth: 1,
-		borderColor: "#eeeeee",
-
-		borderRadius: 14,
-
-		overflow: "hidden",
-
-		backgroundColor: "#ffffff",
+		minHeight: 146,
+		flexDirection: "row",
+		alignItems: "stretch",
+		gap: spacing.md,
 	},
 
 	previewContainer: {
 		position: "relative",
+		flexShrink: 0,
 	},
 
 	preview: {
-		width: "100%",
-		aspectRatio: 4 / 3,
-
-		backgroundColor: "#f5f5f5",
+		width: 92,
+		height: 122,
+		borderRadius: radius.md,
+		backgroundColor: colors.surfaceMuted,
 	},
 
 	orientationWarning: {
 		position: "absolute",
-
-		left: 12,
-		right: 12,
-		bottom: 12,
-
-		paddingHorizontal: 12,
-		paddingVertical: 9,
-
-		borderRadius: 10,
-
-		backgroundColor: "rgba(255, 255, 255, 0.94)",
-
-		borderWidth: 1,
-		borderColor: "#dddddd",
-
+		left: spacing.xs,
+		bottom: spacing.xs,
+		width: 26,
+		height: 26,
+		borderRadius: radius.pill,
+		backgroundColor: colors.surface,
 		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	photoInfo: {
+		flex: 1,
+		minWidth: 0,
+		paddingVertical: spacing.xs,
+		paddingRight: 34,
+	},
+
+	typeRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.sm,
+	},
+
+	typeLabel: {
+		...typography.body,
+		color: colors.textSecondary,
+	},
+
+	scheduleValue: {
+		marginTop: spacing.sm,
+		fontSize: 20,
+		lineHeight: 25,
+		fontWeight: "700",
+		color: colors.text,
+	},
+
+	scheduleDescription: {
+		marginTop: spacing.xs,
+		...typography.body,
+		color: colors.textSecondary,
 	},
 
 	orientationWarningText: {
-		fontSize: 13,
-		fontWeight: "600",
-
-		color: "#555555",
-	},
-
-	photoFooter: {
-		flexDirection: "row",
-
-		alignItems: "center",
-		justifyContent: "space-between",
-
-		padding: 14,
-
-		gap: 12,
-	},
-
-	expirationContainer: {
-		flex: 1,
-	},
-
-	expirationLabel: {
-		fontSize: 12,
-
-		color: "#888888",
-	},
-
-	expirationValue: {
-		marginTop: 3,
-
-		fontSize: 14,
-		fontWeight: "600",
-
-		color: "#222222",
+		marginTop: spacing.sm,
+		...typography.caption,
+		color: colors.textMuted,
 	},
 
 	deleteButton: {
-		borderWidth: 1,
-		borderColor: "#dddddd",
-
-		borderRadius: 10,
-
-		paddingHorizontal: 14,
-		paddingVertical: 10,
-
-		minWidth: 72,
-
-		alignItems: "center",
-		justifyContent: "center",
+		position: "absolute",
+		top: spacing.md,
+		right: spacing.md,
+		width: 40,
+		height: 40,
+		borderRadius: radius.md,
 	},
 
-	deleteButtonDisabled: {
-		opacity: 0.5,
-	},
-
-	deleteButtonText: {
-		fontSize: 14,
-		fontWeight: "600",
-
-		color: "#b42318",
-	},
-
-	addButton: {
-		marginTop: 4,
-
-		backgroundColor: "#111111",
-
-		borderRadius: 12,
-
-		paddingVertical: 15,
-
-		alignItems: "center",
-		justifyContent: "center",
-	},
-
-	addButtonText: {
-		fontSize: 16,
-		fontWeight: "600",
-
-		color: "#ffffff",
+	senderText: {
+		marginTop: spacing.xs,
+		...typography.caption,
+		color: colors.textMuted,
 	},
 });

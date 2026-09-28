@@ -70,6 +70,7 @@ export async function getTemporaryPhotos(
 			id: document.id,
 
 			createdByUid: data.createdByUid,
+			createdByEmail: data.createdByEmail,
 
 			previewPath: data.previewPath,
 			epaperFilePath: data.epaperFilePath,

@@ -24,6 +24,7 @@ type TemporaryPhotoBase = {
 	id: string;
 
 	createdByUid: string;
+	createdByEmail?: string;
 
 	previewPath: string;
 	epaperFilePath: string;

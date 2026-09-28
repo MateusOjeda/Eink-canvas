@@ -3,9 +3,9 @@ import { useCallback, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
+	Image,
 	Pressable,
 	StyleSheet,
-	Switch,
 	Text,
 	View,
 } from "react-native";
@@ -17,17 +17,40 @@ import {
 	useLocalSearchParams,
 } from "expo-router";
 
-import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+
+import { Screen } from "@/components/layout/Screen";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { AppSwitch } from "@/components/ui/AppSwitch";
+import { Card } from "@/components/ui/Card";
+import { IconButton } from "@/components/ui/IconButton";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+
+import { colors, radius, spacing, typography } from "@/theme";
 
 import { getDevice } from "@/firebase/devices";
-
 import { getCollections, setCollectionActive } from "@/firebase/collections";
-
+import { getPhotos } from "@/firebase/photos";
+import { getCachedStorageFileUri } from "@/firebase/storage";
 import { deleteCollectionWithPhotos } from "@/firebase/cascade";
 
 import type { Device } from "@/types/device";
-
 import type { PhotoCollection } from "@/types/photo-collection";
+
+type CollectionListItem = PhotoCollection & {
+	photoCount: number;
+	thumbnailUri: string | null;
+};
+
+function getDisplayTypeLabel(displayType: Device["displayType"]) {
+	return displayType === "spectra6-13.3"
+		? 'Spectra 6 — 13,3"'
+		: 'Spectra 6 — 7,3"';
+}
+
+function getPhotoCountLabel(count: number) {
+	return count === 1 ? "1 foto" : `${count} fotos`;
+}
 
 export default function DeviceScreen() {
 	const { deviceId } = useLocalSearchParams<{
@@ -35,24 +58,54 @@ export default function DeviceScreen() {
 	}>();
 
 	const [device, setDevice] = useState<Device | null>(null);
-
-	const [collections, setCollections] = useState<PhotoCollection[]>([]);
-
+	const [collections, setCollections] = useState<CollectionListItem[]>([]);
 	const [loading, setLoading] = useState(true);
 
 	const load = useCallback(async () => {
 		try {
+			setLoading(true);
+
 			const [loadedDevice, loadedCollections] = await Promise.all([
 				getDevice(deviceId),
 				getCollections(deviceId),
 			]);
 
-			setDevice(loadedDevice);
+			const collectionsWithDetails = await Promise.all(
+				loadedCollections.map(async (photoCollection) => {
+					const photos = await getPhotos(
+						deviceId,
+						photoCollection.id,
+					);
 
-			setCollections(loadedCollections);
+					const firstPhoto = photos[0];
+
+					let thumbnailUri: string | null = null;
+
+					if (firstPhoto?.thumbnailPath) {
+						try {
+							thumbnailUri = await getCachedStorageFileUri(
+								firstPhoto.thumbnailPath,
+							);
+						} catch (error) {
+							console.error(
+								"Erro ao carregar miniatura da coleção:",
+								error,
+							);
+						}
+					}
+
+					return {
+						...photoCollection,
+						photoCount: photos.length,
+						thumbnailUri,
+					};
+				}),
+			);
+
+			setDevice(loadedDevice);
+			setCollections(collectionsWithDetails);
 		} catch (error) {
 			console.error(error);
-
 			Alert.alert("Erro", "Não foi possível carregar o quadro.");
 		} finally {
 			setLoading(false);
@@ -65,8 +118,18 @@ export default function DeviceScreen() {
 		}, [load]),
 	);
 
+	const handleOpenCollection = (collectionId: string) => {
+		router.push({
+			pathname: "/device/[deviceId]/collection/[collectionId]",
+			params: {
+				deviceId,
+				collectionId,
+			},
+		});
+	};
+
 	const handleToggleCollection = async (
-		photoCollection: PhotoCollection,
+		photoCollection: CollectionListItem,
 		active: boolean,
 	) => {
 		try {
@@ -84,12 +147,11 @@ export default function DeviceScreen() {
 			);
 		} catch (error) {
 			console.error(error);
-
 			Alert.alert("Erro", "Não foi possível alterar a coleção.");
 		}
 	};
 
-	const handleDeleteCollection = (photoCollection: PhotoCollection) => {
+	const handleDeleteCollection = (photoCollection: CollectionListItem) => {
 		Alert.alert("Excluir coleção", `Excluir "${photoCollection.name}"?`, [
 			{
 				text: "Cancelar",
@@ -98,7 +160,6 @@ export default function DeviceScreen() {
 			{
 				text: "Excluir",
 				style: "destructive",
-
 				onPress: async () => {
 					try {
 						await deleteCollectionWithPhotos(
@@ -126,76 +187,137 @@ export default function DeviceScreen() {
 
 	if (loading) {
 		return (
-			<View style={styles.loading}>
-				<ActivityIndicator />
-			</View>
+			<>
+				<Stack.Screen options={{ headerShown: false }} />
+
+				<View style={styles.loading}>
+					<ActivityIndicator size="large" color={colors.primary} />
+				</View>
+			</>
+		);
+	}
+
+	if (!device) {
+		return (
+			<>
+				<Stack.Screen options={{ headerShown: false }} />
+
+				<Screen>
+					<ScreenHeader
+						title="Quadro"
+						subtitle="Não foi possível carregar este dispositivo."
+						showBackButton
+					/>
+				</Screen>
+			</>
 		);
 	}
 
 	return (
 		<>
-			<Stack.Screen
-				options={{
-					title: device ? `${device.name}` : "",
-					headerRight: () => (
-						<Pressable
-							hitSlop={12}
-							onPress={() =>
-								router.push({
-									pathname:
-										"/device/[deviceId]/temporary-photos",
+			<Stack.Screen options={{ headerShown: false }} />
 
-									params: {
-										deviceId,
-									},
-								})
-							}
-						>
+			<Screen scroll>
+				<ScreenHeader
+					title={device.name}
+					subtitle={`${getDisplayTypeLabel(
+						device.displayType,
+					)} · Intervalo: ${device.updateIntervalMinutes} min`}
+					showBackButton
+				/>
+
+				<Pressable
+					onPress={() =>
+						router.push({
+							pathname: "/device/[deviceId]/temporary-photos",
+							params: {
+								deviceId,
+							},
+						})
+					}
+					style={({ pressed }) => [pressed && styles.pressed]}
+				>
+					<Card style={styles.scheduledCard}>
+						<View style={styles.scheduledIcon}>
 							<MaterialCommunityIcons
-								name="image-refresh-outline"
-								size={25}
-								color="#666666"
+								name="calendar-month-outline"
+								size={27}
+								color={colors.textSecondary}
 							/>
-						</Pressable>
-					),
-				}}
-			/>
+						</View>
 
-			<View style={styles.container}>
-				<View style={styles.list}>
+						<View style={styles.scheduledText}>
+							<Text style={styles.navigationTitle}>
+								Fotos agendadas
+							</Text>
+
+							<Text style={styles.navigationSubtitle}>
+								Gerencie as fotos com data ou duração
+							</Text>
+						</View>
+					</Card>
+				</Pressable>
+
+				<View style={styles.collectionsHeader}>
+					<Text style={styles.sectionTitle}>Coleções</Text>
+
+					<Text style={styles.sectionSubtitle}>
+						Escolha quais coleções aparecem neste quadro.
+					</Text>
+				</View>
+
+				<View style={styles.collectionList}>
 					{collections.map((photoCollection) => (
-						<View
+						<Card
 							key={photoCollection.id}
 							style={styles.collectionCard}
+							padding="sm"
 						>
 							<Pressable
-								style={styles.collectionInfo}
+								style={({ pressed }) => [
+									styles.collectionMain,
+									pressed && styles.pressed,
+								]}
 								onPress={() =>
-									router.push({
-										pathname:
-											"/device/[deviceId]/collection/[collectionId]",
-
-										params: {
-											deviceId,
-
-											collectionId: photoCollection.id,
-										},
-									})
+									handleOpenCollection(photoCollection.id)
 								}
 							>
-								<Text style={styles.collectionName}>
-									{photoCollection.name}
-								</Text>
+								{photoCollection.thumbnailUri ? (
+									<Image
+										source={{
+											uri: photoCollection.thumbnailUri,
+										}}
+										style={styles.collectionThumbnail}
+										resizeMode="cover"
+									/>
+								) : (
+									<View style={styles.collectionPlaceholder}>
+										<MaterialCommunityIcons
+											name="image-outline"
+											size={24}
+											color={colors.textMuted}
+										/>
+									</View>
+								)}
 
-								<Text style={styles.collectionStatus}>
-									{photoCollection.active
-										? "Ativa"
-										: "Desativada"}
-								</Text>
+								<View style={styles.collectionText}>
+									<Text
+										numberOfLines={1}
+										style={styles.collectionName}
+									>
+										{photoCollection.name}
+									</Text>
+
+									<Text style={styles.photoCount}>
+										{getPhotoCountLabel(
+											photoCollection.photoCount,
+										)}
+									</Text>
+								</View>
 							</Pressable>
 
-							<View style={styles.collectionActions}>
-								<Switch
+							<View style={styles.collectionControls}>
+								<AppSwitch
 									value={photoCollection.active}
 									onValueChange={(active) =>
 										handleToggleCollection(
@@ -203,132 +325,206 @@ export default function DeviceScreen() {
 											active,
 										)
 									}
+									style={styles.collectionSwitch}
 								/>
 
-								<Pressable
-									hitSlop={10}
+								<View style={styles.actionDivider} />
+
+								<IconButton
+									accessibilityLabel={`Editar ${photoCollection.name}`}
+									style={styles.smallIconButton}
 									onPress={() =>
 										router.push({
 											pathname: "/edit-collection",
-
 											params: {
 												deviceId,
-
 												collectionId:
 													photoCollection.id,
 											},
 										})
 									}
-								>
-									<Feather
-										name="edit"
-										size={20}
-										color="#666666"
-									/>
-								</Pressable>
+									icon={
+										<MaterialCommunityIcons
+											name="square-edit-outline"
+											size={20}
+											color={colors.textSecondary}
+										/>
+									}
+								/>
 
-								<Pressable
-									hitSlop={10}
+								<IconButton
+									accessibilityLabel={`Excluir ${photoCollection.name}`}
+									style={styles.smallIconButton}
 									onPress={() =>
 										handleDeleteCollection(photoCollection)
 									}
-								>
-									<Ionicons
-										name="trash-outline"
-										size={20}
-										color="#666666"
-									/>
-								</Pressable>
+									icon={
+										<Ionicons
+											name="trash-outline"
+											size={20}
+											color={colors.textSecondary}
+										/>
+									}
+								/>
 							</View>
-						</View>
+						</Card>
 					))}
 				</View>
 
-				<Pressable
+				<PrimaryButton
+					title="Adicionar coleção"
 					style={styles.addButton}
 					onPress={() =>
 						router.push({
 							pathname: "/edit-collection",
-
 							params: {
 								deviceId,
 							},
 						})
 					}
-				>
-					<Text style={styles.addButtonText}>Adicionar coleção</Text>
-				</Pressable>
-			</View>
+					leftIcon={
+						<Ionicons name="add" size={28} color={colors.white} />
+					}
+				/>
+			</Screen>
 		</>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: "#ffffff",
-		padding: 24,
-	},
-
 	loading: {
 		flex: 1,
-		backgroundColor: "#ffffff",
-		justifyContent: "center",
+		backgroundColor: colors.background,
 		alignItems: "center",
+		justifyContent: "center",
 	},
 
-	title: {
-		fontSize: 24,
-		fontWeight: "700",
-		marginBottom: 20,
+	pressed: {
+		opacity: 0.72,
 	},
 
-	list: {
-		gap: 12,
+	scheduledCard: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.md,
+	},
+
+	scheduledIcon: {
+		width: 44,
+		height: 44,
+		borderRadius: radius.md,
+		backgroundColor: colors.surfaceMuted,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	scheduledText: {
+		flex: 1,
+		minWidth: 0,
+	},
+
+	navigationTitle: {
+		...typography.cardTitle,
+		color: colors.text,
+	},
+
+	navigationSubtitle: {
+		marginTop: spacing.xs,
+		...typography.metadata,
+		color: colors.textSecondary,
+	},
+
+	collectionsHeader: {
+		marginTop: spacing.xxl,
+		marginBottom: spacing.lg,
+	},
+
+	sectionTitle: {
+		...typography.sectionTitle,
+		color: colors.text,
+	},
+
+	sectionSubtitle: {
+		marginTop: spacing.xs,
+		...typography.body,
+		color: colors.textSecondary,
+	},
+
+	collectionList: {
+		gap: spacing.md,
 	},
 
 	collectionCard: {
-		borderWidth: 1,
-		borderColor: "#dddddd",
-		borderRadius: 12,
-		padding: 16,
-
+		minHeight: 92,
 		flexDirection: "row",
 		alignItems: "center",
+		gap: spacing.sm,
 	},
 
-	collectionInfo: {
+	collectionMain: {
 		flex: 1,
+		minWidth: 0,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.md,
+	},
+
+	collectionThumbnail: {
+		width: 64,
+		height: 64,
+		borderRadius: radius.md,
+		backgroundColor: colors.surfaceMuted,
+	},
+
+	collectionPlaceholder: {
+		width: 64,
+		height: 64,
+		borderRadius: radius.md,
+		backgroundColor: colors.surfaceMuted,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	collectionText: {
+		flex: 1,
+		minWidth: 0,
 	},
 
 	collectionName: {
-		fontSize: 17,
-		fontWeight: "600",
+		...typography.cardTitle,
+		color: colors.text,
 	},
 
-	collectionStatus: {
-		marginTop: 4,
-		fontSize: 13,
-		color: "#666666",
+	photoCount: {
+		marginTop: spacing.xs,
+		...typography.metadata,
+		color: colors.textSecondary,
 	},
 
-	collectionActions: {
+	collectionControls: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 15,
+		gap: 6,
+	},
+
+	collectionSwitch: {
+		transform: [{ scaleX: 0.86 }, { scaleY: 0.86 }],
+	},
+
+	actionDivider: {
+		width: 1,
+		height: 34,
+		marginHorizontal: 2,
+		backgroundColor: colors.borderSoft,
+	},
+
+	smallIconButton: {
+		width: 36,
+		height: 36,
+		borderRadius: radius.md,
 	},
 
 	addButton: {
-		marginTop: 20,
-		backgroundColor: "#6b6b6b",
-		borderRadius: 12,
-		paddingVertical: 14,
-		alignItems: "center",
-	},
-
-	addButtonText: {
-		color: "#ffffff",
-		fontSize: 16,
-		fontWeight: "600",
+		marginTop: spacing.xl,
 	},
 });
