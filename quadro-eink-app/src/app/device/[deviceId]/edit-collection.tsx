@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
 	ActivityIndicator,
@@ -29,32 +29,22 @@ import {
 } from "@/theme";
 
 import {
-	getPhoto,
-	updatePhotoDescription,
-} from "@/firebase/photos";
+	createPhotoCollection,
+	getPhotoCollection,
+	renamePhotoCollection,
+} from "@/firebase/collections";
 
 import { getDevice } from "@/firebase/devices";
-import { getPhotoCollection } from "@/firebase/collections";
 
-import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/constants/constants";
+export default function EditCollectionScreen() {
+	const { deviceId, collectionId } =
+		useLocalSearchParams<{
+			deviceId: string;
+			collectionId?: string;
+		}>();
 
-export default function PhotoDescriptionScreen() {
-	const {
-		deviceId,
-		collectionId,
-		photoId,
-	} = useLocalSearchParams<{
-		deviceId: string;
-		collectionId: string;
-		photoId: string;
-	}>();
-
-	const [description, setDescription] =
-		useState("");
-
+	const [name, setName] = useState("");
 	const [deviceName, setDeviceName] =
-		useState("");
-	const [collectionName, setCollectionName] =
 		useState("");
 
 	const [loading, setLoading] = useState(true);
@@ -65,53 +55,44 @@ export default function PhotoDescriptionScreen() {
 
 		const load = async () => {
 			try {
-				const [
-					photo,
-					device,
-					collection,
-				] = await Promise.all([
-					getPhoto(
-						deviceId,
-						collectionId,
-						photoId,
-					),
-					getDevice(deviceId),
-					getPhotoCollection(
-						deviceId,
-						collectionId,
-					),
-				]);
+				const [device, photoCollection] =
+					await Promise.all([
+						getDevice(deviceId),
+						collectionId
+							? getPhotoCollection(
+									deviceId,
+									collectionId,
+								)
+							: Promise.resolve(null),
+					]);
 
 				if (!isMounted) {
 					return;
 				}
 
-				if (!photo) {
+				setDeviceName(device?.name ?? "");
+
+				if (
+					collectionId &&
+					!photoCollection
+				) {
 					Alert.alert(
-						"Foto não encontrada",
+						"Coleção não encontrada",
 					);
 
 					router.back();
 					return;
 				}
 
-				setDescription(
-					photo.description ?? "",
-				);
-
-				setDeviceName(device?.name ?? "");
-				setCollectionName(
-					collection?.name ?? "",
-				);
+				if (photoCollection) {
+					setName(photoCollection.name);
+				}
 			} catch (error) {
-				console.error(
-					"Erro ao carregar descrição:",
-					error,
-				);
+				console.error(error);
 
 				Alert.alert(
 					"Erro",
-					"Não foi possível carregar a descrição.",
+					"Não foi possível carregar a coleção.",
 				);
 			} finally {
 				if (isMounted) {
@@ -125,41 +106,43 @@ export default function PhotoDescriptionScreen() {
 		return () => {
 			isMounted = false;
 		};
-	}, [
-		deviceId,
-		collectionId,
-		photoId,
-	]);
-
-	const subtitle = useMemo(
-		() =>
-			[collectionName, deviceName]
-				.filter(Boolean)
-				.join(" · "),
-		[collectionName, deviceName],
-	);
+	}, [deviceId, collectionId]);
 
 	const save = async () => {
+		const trimmedName = name.trim();
+
+		if (!trimmedName) {
+			Alert.alert(
+				"Nome obrigatório",
+				"Digite um nome para a coleção.",
+			);
+
+			return;
+		}
+
 		try {
 			setSaving(true);
 
-			await updatePhotoDescription(
-				deviceId,
-				collectionId,
-				photoId,
-				description,
-			);
+			if (collectionId) {
+				await renamePhotoCollection(
+					deviceId,
+					collectionId,
+					trimmedName,
+				);
+			} else {
+				await createPhotoCollection(
+					deviceId,
+					trimmedName,
+				);
+			}
 
 			router.back();
 		} catch (error) {
-			console.error(
-				"Erro ao salvar descrição:",
-				error,
-			);
+			console.error(error);
 
 			Alert.alert(
 				"Erro",
-				"Não foi possível salvar a descrição.",
+				"Não foi possível salvar a coleção.",
 			);
 		} finally {
 			setSaving(false);
@@ -207,46 +190,47 @@ export default function PhotoDescriptionScreen() {
 					keyboardShouldPersistTaps="handled"
 				>
 					<ScreenHeader
-						title="Descrição"
-						subtitle={subtitle}
+						title={
+							collectionId
+								? "Editar coleção"
+								: "Nova coleção"
+						}
+						subtitle={deviceName}
 						showBackButton
 						style={styles.header}
 					/>
 
-					<Text style={styles.label}>
-						Descrição da foto
-					</Text>
+					<View style={styles.form}>
+						<Text style={styles.label}>
+							Nome da coleção
+						</Text>
 
-					<TextInput
-						value={description}
-						onChangeText={setDescription}
-						maxLength={
-							MAX_PHOTO_DESCRIPTION_LENGTH
-						}
-						multiline
-						autoFocus
-						textAlignVertical="top"
-						placeholder="Quem está na foto? O que aconteceu? O que você quer lembrar?"
-						placeholderTextColor={
-							colors.textMuted
-						}
-						style={styles.input}
-					/>
+						<TextInput
+							value={name}
+							onChangeText={setName}
+							placeholder="Ex.: Família"
+							placeholderTextColor={
+								colors.textMuted
+							}
+							autoFocus
+							returnKeyType="done"
+							onSubmitEditing={save}
+							style={styles.input}
+						/>
 
-					<Text style={styles.counter}>
-						{description.length} /{" "}
-						{
-							MAX_PHOTO_DESCRIPTION_LENGTH
-						}
-					</Text>
-
-					<PrimaryButton
-						title="Salvar descrição"
-						onPress={save}
-						loading={saving}
-						disabled={saving}
-						style={styles.saveButton}
-					/>
+						<PrimaryButton
+							title="Salvar coleção"
+							onPress={save}
+							loading={saving}
+							disabled={
+								!name.trim() ||
+								saving
+							}
+							style={
+								styles.saveButton
+							}
+						/>
+					</View>
 				</Screen>
 			</KeyboardAvoidingView>
 		</>
@@ -273,6 +257,10 @@ const styles = StyleSheet.create({
 		marginBottom: spacing.lg,
 	},
 
+	form: {
+		flex: 1,
+	},
+
 	label: {
 		marginBottom: spacing.sm,
 		...typography.cardTitle,
@@ -280,7 +268,7 @@ const styles = StyleSheet.create({
 	},
 
 	input: {
-		minHeight: 180,
+		minHeight: 52,
 		borderWidth: 1,
 		borderColor: colors.border,
 		borderRadius: radius.lg,
@@ -289,13 +277,6 @@ const styles = StyleSheet.create({
 		paddingVertical: spacing.md,
 		...typography.input,
 		color: colors.text,
-	},
-
-	counter: {
-		marginTop: spacing.xs,
-		...typography.metadata,
-		color: colors.textSecondary,
-		textAlign: "right",
 	},
 
 	saveButton: {

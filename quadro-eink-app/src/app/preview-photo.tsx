@@ -1,20 +1,43 @@
+import { useEffect, useMemo, useState } from "react";
+
 import {
+	ActivityIndicator,
 	Alert,
 	Image,
+	KeyboardAvoidingView,
+	Platform,
 	Pressable,
 	StyleSheet,
 	Text,
-	View,
 	TextInput,
+	useWindowDimensions,
+	View,
 } from "react-native";
 
-import { useState } from "react";
-
-import { router, useLocalSearchParams } from "expo-router";
+import {
+	router,
+	Stack,
+	useLocalSearchParams,
+} from "expo-router";
 
 import { Directory, File, Paths } from "expo-file-system";
 
+import { Feather } from "@expo/vector-icons";
+
+import { Screen } from "@/components/layout/Screen";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+
+import {
+	colors,
+	radius,
+	spacing,
+	typography,
+} from "@/theme";
+
 import { savePhoto } from "@/firebase/photos";
+import { getDevice } from "@/firebase/devices";
+import { getPhotoCollection } from "@/firebase/collections";
 
 import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/constants/constants";
 
@@ -32,62 +55,132 @@ export default function PreviewPhotoScreen() {
 	}>();
 
 	const [saving, setSaving] = useState(false);
-
 	const [description, setDescription] = useState("");
 
-	const imageWidth = Number(params.imageWidth);
+	const [deviceName, setDeviceName] = useState("");
+	const [collectionName, setCollectionName] =
+		useState("");
+	const [loadingContext, setLoadingContext] =
+		useState(true);
 
+	const imageWidth = Number(params.imageWidth);
 	const imageHeight = Number(params.imageHeight);
 
-	/*
-	 * Reconstrói as URIs a partir dos
-	 * nomes enviados pelo crop-photo.
-	 */
-	const previewUri = Paths.join(Paths.cache, params.fileName);
+	const { width: screenWidth } = useWindowDimensions();
 
-	const thumbnailUri = Paths.join(Paths.cache, params.thumbnailFileName);
+	const previewAspectRatio =
+		imageWidth / imageHeight;
 
-	const binUri = Paths.join(Paths.cache, params.binFileName);
+	const previewMaxWidth = Math.min(
+		screenWidth - spacing.xxl * 2,
+		320,
+	);
 
-	/*
-	 * Salva o .bin em uma pasta
-	 * escolhida pelo usuário.
-	 */
+	const previewMaxHeight = 240;
+
+	const previewSize = (() => {
+		let width = previewMaxWidth;
+		let height = width / previewAspectRatio;
+
+		if (height > previewMaxHeight) {
+			height = previewMaxHeight;
+			width = height * previewAspectRatio;
+		}
+
+		return { width, height };
+	})();
+
+	const previewUri = Paths.join(
+		Paths.cache,
+		params.fileName,
+	);
+
+	const thumbnailUri = Paths.join(
+		Paths.cache,
+		params.thumbnailFileName,
+	);
+
+	const binUri = Paths.join(
+		Paths.cache,
+		params.binFileName,
+	);
+
+	useEffect(() => {
+		let isMounted = true;
+
+		const loadContext = async () => {
+			try {
+				const [device, collection] =
+					await Promise.all([
+						getDevice(params.deviceId),
+						getPhotoCollection(
+							params.deviceId,
+							params.collectionId,
+						),
+					]);
+
+				if (!isMounted) {
+					return;
+				}
+
+				if (device) {
+					setDeviceName(device.name);
+				}
+
+				if (collection) {
+					setCollectionName(
+						collection.name,
+					);
+				}
+			} catch (error) {
+				console.error(
+					"Erro ao carregar contexto da prévia:",
+					error,
+				);
+			} finally {
+				if (isMounted) {
+					setLoadingContext(false);
+				}
+			}
+		};
+
+		loadContext();
+
+		return () => {
+			isMounted = false;
+		};
+	}, [params.deviceId, params.collectionId]);
+
+	const subtitle = useMemo(
+		() =>
+			[collectionName, deviceName]
+				.filter(Boolean)
+				.join(" · "),
+		[collectionName, deviceName],
+	);
+
 	const downloadBin = async () => {
 		try {
 			const sourceFile = new File(binUri);
 
 			if (!sourceFile.exists) {
-				throw new Error("Arquivo .bin não encontrado.");
+				throw new Error(
+					"Arquivo .bin não encontrado.",
+				);
 			}
 
-			/*
-			 * Abre o seletor de pastas
-			 * do sistema.
-			 *
-			 * No Android, normalmente
-			 * você pode escolher Downloads,
-			 * Documents etc.
-			 */
-			const destinationDirectory = await Directory.pickDirectoryAsync();
+			const destinationDirectory =
+				await Directory.pickDirectoryAsync();
 
-			const outputName = `quadro-eink-${imageWidth}x${imageHeight}-${Date.now()}.bin`;
+			const outputName =
+				`quadro-eink-${imageWidth}x${imageHeight}-${Date.now()}.bin`;
 
-			/*
-			 * Cria o arquivo na pasta
-			 * escolhida pelo usuário.
-			 */
-			const outputFile = destinationDirectory.createFile(
-				outputName,
-				"application/octet-stream",
-			);
+			const outputFile =
+				destinationDirectory.createFile(
+					outputName,
+					"application/octet-stream",
+				);
 
-			/*
-			 * O arquivo atualmente tem:
-			 *
-			 * 4 bits por pixel
-			 * 2 pixels por byte.
-			 */
 			const bytes = await sourceFile.bytes();
 
 			await outputFile.write(bytes);
@@ -97,11 +190,10 @@ export default function PreviewPhotoScreen() {
 				`${outputName}\n\n${bytes.length.toLocaleString()} bytes`,
 			);
 		} catch (error) {
-			/*
-			 * O cancelamento do seletor
-			 * também pode cair aqui.
-			 */
-			console.log("Download do .bin cancelado ou falhou:", error);
+			console.log(
+				"Download do .bin cancelado ou falhou:",
+				error,
+			);
 		}
 	};
 
@@ -111,234 +203,298 @@ export default function PreviewPhotoScreen() {
 
 			await savePhoto({
 				deviceId: params.deviceId,
-
 				collectionId: params.collectionId,
 
 				previewUri,
 				thumbnailUri,
 				binUri,
 
-				width: Number(params.imageWidth),
-
-				height: Number(params.imageHeight),
+				width: imageWidth,
+				height: imageHeight,
 
 				description,
 			});
 
 			router.dismissTo({
-				pathname: "/device/[deviceId]/collection/[collectionId]",
-
+				pathname:
+					"/device/[deviceId]/collection/[collectionId]",
 				params: {
-					deviceId: params.deviceId,
-
-					collectionId: params.collectionId,
+					deviceId:
+						params.deviceId,
+					collectionId:
+						params.collectionId,
 				},
 			});
 		} catch (error) {
-			console.error("Erro ao salvar imagem:", error);
+			console.error(
+				"Erro ao salvar imagem:",
+				error,
+			);
 
-			Alert.alert("Erro", "Não foi possível salvar a imagem.");
+			Alert.alert(
+				"Erro",
+				"Não foi possível salvar a imagem.",
+			);
 		} finally {
 			setSaving(false);
 		}
 	};
 
+	if (loadingContext) {
+		return (
+			<>
+				<Stack.Screen
+					options={{ headerShown: false }}
+				/>
+
+				<Screen>
+					<View style={styles.loading}>
+						<ActivityIndicator
+							size="large"
+							color={colors.primary}
+						/>
+					</View>
+				</Screen>
+			</>
+		);
+	}
+
 	return (
-		<View style={styles.container}>
-			<Text style={styles.title}>Prévia Spectra 6</Text>
+		<>
+			<Stack.Screen
+				options={{ headerShown: false }}
+			/>
 
-			<Text style={styles.resolution}>
-				{imageWidth} × {imageHeight}
-			</Text>
-
-			<View style={styles.previewContainer}>
-				<Image
-					source={{
-						uri: previewUri,
-					}}
-					style={[
-						styles.image,
-
-						{
-							aspectRatio: imageWidth / imageHeight,
-						},
-					]}
-					resizeMode="contain"
-				/>
-			</View>
-
-			<Text style={styles.hint}>
-				Esta é a imagem já convertida para as cores da tela.
-			</Text>
-
-			<Pressable
-				style={styles.secondaryButton}
-				onPress={() => router.back()}
+			<KeyboardAvoidingView
+				style={styles.keyboardView}
+				behavior={
+					Platform.OS === "ios"
+						? "padding"
+						: "height"
+				}
 			>
-				<Text style={styles.secondaryButtonText}>Voltar e ajustar</Text>
-			</Pressable>
+				<Screen
+					scroll
+					contentContainerStyle={
+						styles.screenContent
+					}
+					keyboardShouldPersistTaps="handled"
+				>
+					<ScreenHeader
+						title="Prévia Spectra 6"
+						subtitle={subtitle}
+						showBackButton
+						style={styles.header}
+					/>
 
-			<Pressable style={styles.secondaryButton} onPress={downloadBin}>
-				<Text style={styles.secondaryButtonText}>Baixar .bin</Text>
-			</Pressable>
+					<Text style={styles.resolution}>
+						{imageWidth} × {imageHeight}
+					</Text>
 
-			<View style={styles.descriptionSection}>
-				<Text style={styles.descriptionLabel}>Descrição</Text>
+					<View style={styles.previewContainer}>
+						<Image
+							source={{ uri: previewUri }}
+							style={[
+								styles.image,
+								{
+									width:
+										previewSize.width,
+									height:
+										previewSize.height,
+								},
+							]}
+							resizeMode="contain"
+						/>
+					</View>
 
-				<TextInput
-					value={description}
-					onChangeText={setDescription}
-					multiline
-					maxLength={MAX_PHOTO_DESCRIPTION_LENGTH}
-					textAlignVertical="top"
-					placeholder="Quem está na foto? O que aconteceu? O que você quer lembrar?"
-					style={styles.descriptionInput}
-				/>
+					<Text style={styles.hint}>
+						Esta é a imagem já convertida
+						para as cores da tela.
+					</Text>
 
-				<Text style={styles.descriptionCounter}>
-					{description.length} / {MAX_PHOTO_DESCRIPTION_LENGTH}
-				</Text>
-			</View>
+					<Pressable
+						onPress={downloadBin}
+						style={({ pressed }) => [
+							styles.downloadButton,
+							pressed &&
+								styles.pressed,
+						]}
+					>
+						<Feather
+							name="download"
+							size={22}
+							color={colors.text}
+						/>
 
-			<Pressable
-				disabled={saving}
-				style={[
-					styles.primaryButton,
-					saving && {
-						opacity: 0.5,
-					},
-				]}
-				onPress={useImage}
-			>
-				<Text style={styles.primaryButtonText}>
-					{saving ? "Salvando..." : "Usar imagem"}
-				</Text>
-			</Pressable>
-		</View>
+						<Text
+							style={
+								styles.downloadButtonText
+							}
+						>
+							Baixar .bin
+						</Text>
+					</Pressable>
+
+					<View
+						style={
+							styles.descriptionSection
+						}
+					>
+						<Text
+							style={
+								styles.descriptionLabel
+							}
+						>
+							Descrição
+						</Text>
+
+						<TextInput
+							value={description}
+							onChangeText={setDescription}
+							multiline
+							maxLength={
+								MAX_PHOTO_DESCRIPTION_LENGTH
+							}
+							textAlignVertical="top"
+							placeholder="Quem está na foto? O que aconteceu? O que você quer lembrar?"
+							placeholderTextColor={
+								colors.textMuted
+							}
+							style={
+								styles.descriptionInput
+							}
+						/>
+
+						<Text
+							style={
+								styles.descriptionCounter
+							}
+						>
+							{description.length} /{" "}
+							{
+								MAX_PHOTO_DESCRIPTION_LENGTH
+							}
+						</Text>
+					</View>
+
+					<PrimaryButton
+						title={
+							saving
+								? "Salvando..."
+								: "Usar imagem"
+						}
+						onPress={useImage}
+						loading={saving}
+						style={styles.useButton}
+						rightIcon={
+							<Feather
+								name="arrow-right"
+								size={21}
+								color={colors.white}
+							/>
+						}
+					/>
+				</Screen>
+			</KeyboardAvoidingView>
+		</>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
+	keyboardView: {
 		flex: 1,
-
-		backgroundColor: "#ffffff",
-
-		padding: 24,
+		backgroundColor: colors.background,
 	},
 
-	title: {
-		fontSize: 22,
+	screenContent: {
+		flexGrow: 1,
+	},
 
-		fontWeight: "600",
+	loading: {
+		flex: 1,
+		alignItems: "center",
+		justifyContent: "center",
+	},
 
-		textAlign: "center",
+	header: {
+		marginBottom: spacing.md,
+	},
+
+	pressed: {
+		opacity: 0.72,
 	},
 
 	resolution: {
-		marginTop: 6,
-
-		fontSize: 14,
-
-		color: "#666666",
-
-		textAlign: "center",
+		marginBottom: spacing.sm,
+		...typography.body,
+		color: colors.textSecondary,
 	},
 
 	previewContainer: {
-		flex: 1,
-
 		alignItems: "center",
-
 		justifyContent: "center",
 	},
 
 	image: {
-		width: "100%",
-
-		maxHeight: "100%",
+		borderRadius: radius.lg,
+		backgroundColor: colors.surfaceMuted,
 	},
 
 	hint: {
-		fontSize: 14,
-
-		color: "#666666",
-
-		textAlign: "center",
-
-		marginBottom: 20,
+		marginTop: spacing.sm,
+		...typography.body,
+		color: colors.textSecondary,
 	},
 
-	secondaryButton: {
-		paddingVertical: 14,
-
+	downloadButton: {
+		marginTop: spacing.lg,
+		minHeight: 52,
 		borderWidth: 1,
-
-		borderColor: "#111111",
-
-		borderRadius: 12,
-
+		borderColor: colors.border,
+		borderRadius: radius.lg,
+		backgroundColor: colors.surface,
+		flexDirection: "row",
 		alignItems: "center",
-
-		marginBottom: 10,
+		justifyContent: "center",
+		gap: spacing.md,
+		paddingHorizontal: spacing.lg,
 	},
 
-	secondaryButtonText: {
-		color: "#6b6b6b",
-
-		fontSize: 16,
-
-		fontWeight: "600",
+	downloadButtonText: {
+		...typography.button,
+		color: colors.text,
 	},
 
-	primaryButton: {
-		paddingVertical: 14,
-
-		backgroundColor: "#6b6b6b",
-
-		borderRadius: 12,
-
-		alignItems: "center",
-	},
-
-	primaryButtonText: {
-		color: "#ffffff",
-
-		fontSize: 16,
-
-		fontWeight: "600",
-	},
 	descriptionSection: {
-		marginTop: 20,
+		marginTop: spacing.lg,
 	},
 
 	descriptionLabel: {
-		fontSize: 15,
-		fontWeight: "600",
-		marginBottom: 8,
+		marginBottom: spacing.sm,
+		...typography.cardTitle,
+		color: colors.text,
 	},
 
 	descriptionInput: {
-		minHeight: 110,
-
+		minHeight: 88,
 		borderWidth: 1,
-		borderColor: "#cccccc",
-		borderRadius: 12,
-
-		padding: 14,
-
-		fontSize: 15,
-		lineHeight: 21,
-
-		backgroundColor: "#ffffff",
+		borderColor: colors.border,
+		borderRadius: radius.lg,
+		backgroundColor: colors.surface,
+		paddingHorizontal: spacing.lg,
+		paddingVertical: spacing.md,
+		...typography.input,
+		color: colors.text,
 	},
 
 	descriptionCounter: {
-		marginTop: 6,
-
+		marginTop: spacing.xs,
+		...typography.metadata,
+		color: colors.textSecondary,
 		textAlign: "right",
+	},
 
-		fontSize: 12,
-		color: "#777777",
+	useButton: {
+		marginTop: spacing.lg,
 	},
 });

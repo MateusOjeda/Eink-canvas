@@ -17,19 +17,31 @@ import {
 	useLocalSearchParams,
 } from "expo-router";
 
+import { Ionicons } from "@expo/vector-icons";
+
+import { Screen } from "@/components/layout/Screen";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+
+import { colors, radius, spacing, typography } from "@/theme";
+
 import { getPhotoCollection } from "@/firebase/collections";
-
 import { getPhotos } from "@/firebase/photos";
-
 import { getCachedStorageFileUri } from "@/firebase/storage";
-
-import type { PhotoCollection } from "@/types/photo-collection";
-
-import type { Photo } from "@/types/photo";
-
 import { getDevice } from "@/firebase/devices";
 
+import type { PhotoCollection } from "@/types/photo-collection";
+import type { Photo } from "@/types/photo";
 import type { Device } from "@/types/device";
+
+type PhotoWithThumbnail = {
+	photo: Photo;
+	thumbnailUri: string;
+};
+
+function getPhotoCountLabel(count: number) {
+	return `${count} ${count === 1 ? "foto" : "fotos"}`;
+}
 
 export default function CollectionScreen() {
 	const { deviceId, collectionId } = useLocalSearchParams<{
@@ -42,12 +54,7 @@ export default function CollectionScreen() {
 	const [photoCollection, setPhotoCollection] =
 		useState<PhotoCollection | null>(null);
 
-	const [photos, setPhotos] = useState<
-		{
-			photo: Photo;
-			thumbnailUri: string;
-		}[]
-	>([]);
+	const [photos, setPhotos] = useState<PhotoWithThumbnail[]>([]);
 
 	const [loading, setLoading] = useState(true);
 
@@ -55,26 +62,40 @@ export default function CollectionScreen() {
 		useCallback(() => {
 			const load = async () => {
 				try {
-					const [loadedDevice, loadedCollection, loadedPhotos] =
-						await Promise.all([
-							getDevice(deviceId),
-							getPhotoCollection(deviceId, collectionId),
-							getPhotos(deviceId, collectionId),
-						]);
+					setLoading(true);
 
-					const loadedPhotosWithThumbnails = await Promise.all(
-						loadedPhotos.map(async (photo) => ({
-							photo,
-							thumbnailUri: await getCachedStorageFileUri(
-								photo.thumbnailPath,
-							),
-						})),
-					);
+					const [
+						loadedDevice,
+						loadedCollection,
+						loadedPhotos,
+					] = await Promise.all([
+						getDevice(deviceId),
+						getPhotoCollection(
+							deviceId,
+							collectionId,
+						),
+						getPhotos(deviceId, collectionId),
+					]);
+
+					const loadedPhotosWithThumbnails =
+						await Promise.all(
+							loadedPhotos.map(async (photo) => ({
+								photo,
+								thumbnailUri:
+									await getCachedStorageFileUri(
+										photo.thumbnailPath,
+									),
+							})),
+						);
+
 					setDevice(loadedDevice);
 					setPhotoCollection(loadedCollection);
 					setPhotos(loadedPhotosWithThumbnails);
 				} catch (error) {
-					console.error("Erro ao carregar coleção:", error);
+					console.error(
+						"Erro ao carregar coleção:",
+						error,
+					);
 				} finally {
 					setLoading(false);
 				}
@@ -84,35 +105,109 @@ export default function CollectionScreen() {
 		}, [deviceId, collectionId]),
 	);
 
+	const handleAddPhoto = () => {
+		router.push({
+			pathname: "/add-photo",
+
+			params: {
+				deviceId,
+				collectionId,
+				mode: "collection",
+			},
+		});
+	};
+
+	const handleOpenPhoto = (photoId: string) => {
+		router.push({
+			pathname:
+				"/device/[deviceId]/collection/[collectionId]/photo/[photoId]",
+
+			params: {
+				deviceId,
+				collectionId,
+				photoId,
+			},
+		});
+	};
+
 	if (loading) {
 		return (
-			<View style={styles.loading}>
-				<ActivityIndicator size="large" />
-			</View>
+			<>
+				<Stack.Screen
+					options={{ headerShown: false }}
+				/>
+
+				<View style={styles.loading}>
+					<ActivityIndicator
+						size="large"
+						color={colors.primary}
+					/>
+				</View>
+			</>
 		);
 	}
 
 	return (
 		<>
-			<Stack.Screen
-				options={{
-					title: device ? `${photoCollection?.name}` : "",
-				}}
-			/>
+			<Stack.Screen options={{ headerShown: false }} />
 
-			<View style={styles.container}>
+			<Screen
+				contentContainerStyle={
+					styles.screenContent
+				}
+			>
+				<ScreenHeader
+					title={photoCollection?.name ?? "Coleção"}
+					subtitle={
+						device
+							? `${device.name} · ${getPhotoCountLabel(
+									photos.length,
+								)}`
+							: getPhotoCountLabel(
+									photos.length,
+								)
+					}
+					showBackButton
+				/>
+
+				<PrimaryButton
+					title="Adicionar foto"
+					onPress={handleAddPhoto}
+					style={styles.addButton}
+					leftIcon={
+						<Ionicons
+							name="add"
+							size={28}
+							color={colors.white}
+						/>
+					}
+				/>
+
 				<FlatList
 					data={photos}
 					keyExtractor={(item) => item.photo.id}
-					numColumns={3}
-					contentContainerStyle={styles.photoList}
+					numColumns={2}
+					style={styles.photoList}
+					contentContainerStyle={[
+						styles.photoListContent,
+						photos.length === 0 &&
+							styles.emptyListContent,
+					]}
 					columnWrapperStyle={
-						photos.length > 1 ? styles.photoRow : undefined
+						photos.length > 1
+							? styles.photoRow
+							: undefined
 					}
+					showsVerticalScrollIndicator={false}
 					ListEmptyComponent={
 						<View style={styles.emptyContainer}>
+							<Text style={styles.emptyTitle}>
+								Nenhuma foto nesta coleção
+							</Text>
+
 							<Text style={styles.emptyText}>
-								Nenhuma foto nesta coleção.
+								Adicione a primeira foto para
+								começar a preencher este quadro.
 							</Text>
 						</View>
 					}
@@ -126,22 +221,20 @@ export default function CollectionScreen() {
 
 						const orientationMismatch =
 							device !== null &&
-							photoOrientation !== device.orientation;
+							photoOrientation !==
+								device.orientation;
 
 						return (
 							<Pressable
-								style={styles.photoContainer}
+								style={({ pressed }) => [
+									styles.photoContainer,
+									pressed &&
+										styles.photoPressed,
+								]}
 								onPress={() =>
-									router.push({
-										pathname:
-											"/device/[deviceId]/collection/[collectionId]/photo/[photoId]",
-
-										params: {
-											deviceId,
-											collectionId,
-											photoId: photo.id,
-										},
-									})
+									handleOpenPhoto(
+										photo.id,
+									)
 								}
 							>
 								<Image
@@ -153,15 +246,32 @@ export default function CollectionScreen() {
 								/>
 
 								{!photo.active ? (
-									<View style={styles.inactiveOverlay}>
-										<Text style={styles.inactiveText}>
+									<View
+										style={
+											styles.inactiveOverlay
+										}
+									>
+										<Text
+											style={
+												styles.inactiveText
+											}
+										>
 											Desativada
 										</Text>
 									</View>
 								) : orientationMismatch ? (
-									<View style={styles.inactiveOverlay}>
-										<Text style={styles.inactiveText}>
-											Orientação incompatível
+									<View
+										style={
+											styles.inactiveOverlay
+										}
+									>
+										<Text
+											style={
+												styles.inactiveText
+											}
+										>
+											Orientação
+											incompatível
 										</Text>
 									</View>
 								) : null}
@@ -169,64 +279,51 @@ export default function CollectionScreen() {
 						);
 					}}
 				/>
-
-				<Pressable
-					style={styles.addButton}
-					onPress={() =>
-						router.push({
-							pathname: "/add-photo",
-
-							params: {
-								deviceId,
-								collectionId,
-							},
-						})
-					}
-				>
-					<Text style={styles.addButtonText}>Adicionar foto</Text>
-				</Pressable>
-			</View>
+			</Screen>
 		</>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: "#ffffff",
+	screenContent: {
+		paddingBottom: 0,
 	},
 
 	loading: {
 		flex: 1,
-		backgroundColor: "#ffffff",
-
+		backgroundColor: colors.background,
 		alignItems: "center",
-
 		justifyContent: "center",
 	},
 
+	addButton: {
+		marginBottom: spacing.xl,
+	},
+
 	photoList: {
-		padding: 12,
-		flexGrow: 1,
+		flex: 1,
+	},
+
+	photoListContent: {
+		paddingBottom: spacing.xxl,
 	},
 
 	photoRow: {
-		gap: 8,
-		marginBottom: 8,
+		gap: spacing.md,
 	},
 
 	photoContainer: {
 		flex: 1,
-
-		maxWidth: "33.333%",
-
+		maxWidth: "48%",
 		aspectRatio: 1,
-
-		borderRadius: 8,
-
+		marginBottom: spacing.md,
+		borderRadius: radius.lg,
 		overflow: "hidden",
+		backgroundColor: colors.surfaceMuted,
+	},
 
-		backgroundColor: "#eeeeee",
+	photoPressed: {
+		opacity: 0.82,
 	},
 
 	thumbnail: {
@@ -234,76 +331,47 @@ const styles = StyleSheet.create({
 		height: "100%",
 	},
 
+	emptyListContent: {
+		flexGrow: 1,
+	},
+
 	emptyContainer: {
 		flex: 1,
-
 		alignItems: "center",
-
 		justifyContent: "center",
-
 		paddingVertical: 60,
 	},
 
+	emptyTitle: {
+		...typography.emptyTitle,
+		color: colors.text,
+		textAlign: "center",
+	},
+
 	emptyText: {
-		fontSize: 14,
-
-		color: "#777777",
-
+		marginTop: spacing.sm,
+		maxWidth: 280,
+		...typography.body,
+		color: colors.textSecondary,
 		textAlign: "center",
 	},
 
 	inactiveOverlay: {
 		position: "absolute",
-
 		top: 0,
 		left: 0,
 		right: 0,
 		bottom: 0,
-
+		padding: spacing.sm,
 		backgroundColor: "rgba(0, 0, 0, 0.45)",
-
 		alignItems: "center",
-
 		justifyContent: "center",
 	},
 
 	inactiveText: {
-		color: "#ffffff",
-
-		fontSize: 12,
-
+		...typography.caption,
 		fontWeight: "600",
-
+		color: colors.white,
 		textAlign: "center",
-	},
-
-	addButton: {
-		marginHorizontal: 24,
-
-		marginTop: 8,
-
-		marginBottom: 24,
-
-		backgroundColor: "#6b6b6b",
-
-		borderRadius: 12,
-
-		paddingVertical: 14,
-
-		alignItems: "center",
-	},
-
-	addButtonText: {
-		color: "#ffffff",
-
-		fontSize: 16,
-
-		fontWeight: "600",
-	},
-
-	title: {
-		fontSize: 24,
-		fontWeight: "700",
-		marginBottom: 20,
 	},
 });

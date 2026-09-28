@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
 	ActivityIndicator,
@@ -6,19 +6,26 @@ import {
 	Image,
 	Modal,
 	Pressable,
-	ScrollView,
 	StyleSheet,
 	Text,
 	View,
 } from "react-native";
 
-import { router, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 
 import { Paths } from "expo-file-system";
 
 import { Feather, Ionicons } from "@expo/vector-icons";
 
+import { Screen } from "@/components/layout/Screen";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { Card } from "@/components/ui/Card";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+
+import { colors, radius, spacing, typography } from "@/theme";
+
 import { uploadTemporaryPhoto } from "@/firebase/photos";
+import { getDevice } from "@/firebase/devices";
 
 type Recurrence = "once" | "yearly";
 
@@ -96,6 +103,8 @@ export default function TemporaryPhotoScreen() {
 		imageHeight?: string;
 	}>();
 
+	const [deviceName, setDeviceName] = useState("");
+
 	const [recurrence, setRecurrence] = useState<Recurrence>("once");
 
 	const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
@@ -121,8 +130,24 @@ export default function TemporaryPhotoScreen() {
 	const binUri = binFileName ? Paths.join(Paths.cache, binFileName) : null;
 
 	const width = imageWidth ? Number(imageWidth) : null;
-
 	const height = imageHeight ? Number(imageHeight) : null;
+
+	const isPortrait = width && height ? height > width : false;
+
+	const previewAspectRatio = width && height ? width / height : 4 / 3;
+
+	useEffect(() => {
+		const loadDevice = async () => {
+			try {
+				const device = await getDevice(deviceId);
+				setDeviceName(device?.name ?? "");
+			} catch (error) {
+				console.error("Erro ao carregar o nome do quadro:", error);
+			}
+		};
+
+		loadDevice();
+	}, [deviceId]);
 
 	const selectPhoto = () => {
 		router.push({
@@ -136,17 +161,13 @@ export default function TemporaryPhotoScreen() {
 	};
 
 	const openDurationPicker = () => {
-		setDraftDurationHours(
-			durationMinutes ? durationMinutes / 60 : 1,
-		);
+		setDraftDurationHours(durationMinutes ? durationMinutes / 60 : 1);
 
 		setIsDurationPickerOpen(true);
 	};
 
 	const changeDurationDays = (amount: number) => {
-		setDraftDurationHours((current) =>
-			Math.max(0, current + amount * 24),
-		);
+		setDraftDurationHours((current) => Math.max(0, current + amount * 24));
 	};
 
 	const changeDurationHours = (amount: number) => {
@@ -164,7 +185,6 @@ export default function TemporaryPhotoScreen() {
 		}
 
 		setDurationMinutes(draftDurationHours * 60);
-
 		setIsDurationPickerOpen(false);
 	};
 
@@ -215,7 +235,6 @@ export default function TemporaryPhotoScreen() {
 
 	const confirmYearlyDate = () => {
 		setYearlyDate({ ...draftYearlyDate });
-
 		setIsYearlyPickerOpen(false);
 	};
 
@@ -286,7 +305,6 @@ export default function TemporaryPhotoScreen() {
 				[
 					{
 						text: "OK",
-
 						onPress: () => {
 							router.back();
 						},
@@ -318,61 +336,97 @@ export default function TemporaryPhotoScreen() {
 
 	return (
 		<>
-			<ScrollView
-				style={styles.container}
-				contentContainerStyle={styles.content}
-				showsVerticalScrollIndicator={false}
-			>
-				{previewUri ? (
-					<View style={styles.imageContainer}>
+			<Stack.Screen options={{ headerShown: false }} />
+
+			<Screen scroll>
+				<ScreenHeader
+					title="Adicionar foto agendada"
+					subtitle={deviceName}
+					showBackButton
+				/>
+
+				<Card padding="sm" style={styles.photoCard}>
+					{previewUri ? (
 						<Image
-							source={{
-								uri: previewUri,
-							}}
-							style={styles.image}
+							source={{ uri: previewUri }}
+							style={
+								isPortrait
+									? [
+											styles.imageBase,
+											{
+												height: 250,
+												aspectRatio: previewAspectRatio,
+												alignSelf: "center",
+											},
+										]
+									: [
+											styles.imageBase,
+											{
+												width: "100%",
+												aspectRatio: previewAspectRatio,
+											},
+										]
+							}
 							resizeMode="contain"
 						/>
-					</View>
-				) : (
-					<View style={styles.imagePlaceholder}>
-						<Ionicons
-							name="image-outline"
-							size={42}
-							color="#888888"
+					) : (
+						<View style={styles.imagePlaceholder}>
+							<Ionicons
+								name="image-outline"
+								size={42}
+								color={colors.textMuted}
+							/>
+
+							<Text style={styles.placeholderText}>
+								Nenhuma imagem selecionada
+							</Text>
+						</View>
+					)}
+
+					<Pressable
+						style={({ pressed }) => [
+							styles.changePhotoButton,
+							pressed && styles.pressed,
+						]}
+						onPress={selectPhoto}
+					>
+						<Feather
+							name="image"
+							size={20}
+							color={colors.textSecondary}
 						/>
 
-						<Text style={styles.placeholderText}>
-							Nenhuma imagem selecionada
+						<Text style={styles.changePhotoButtonText}>
+							{previewUri ? "Trocar foto" : "Selecionar foto"}
 						</Text>
-					</View>
-				)}
-
-				<Pressable style={styles.secondaryButton} onPress={selectPhoto}>
-					<Feather name="image" size={19} color="#222222" />
-
-					<Text style={styles.secondaryButtonText}>
-						{previewUri
-							? "Selecionar outra foto"
-							: "Selecionar foto"}
-					</Text>
-				</Pressable>
+					</Pressable>
+				</Card>
 
 				<Text style={styles.label}>Tipo de exibição</Text>
 
 				<View style={styles.recurrenceSelector}>
 					<Pressable
-						style={[
+						style={({ pressed }) => [
 							styles.recurrenceButton,
-
 							recurrence === "once" &&
 								styles.recurrenceButtonSelected,
+							pressed && styles.pressed,
 						]}
 						onPress={() => setRecurrence("once")}
 					>
+						<Feather
+							name="clock"
+							size={21}
+							color={
+								recurrence === "once"
+									? colors.white
+									: colors.textSecondary
+							}
+						/>
+
 						<Text
 							style={[
 								styles.recurrenceButtonText,
-
 								recurrence === "once" &&
 									styles.recurrenceButtonTextSelected,
 							]}
@@ -382,18 +436,27 @@ export default function TemporaryPhotoScreen() {
 					</Pressable>
 
 					<Pressable
-						style={[
+						style={({ pressed }) => [
 							styles.recurrenceButton,
-
 							recurrence === "yearly" &&
 								styles.recurrenceButtonSelected,
+							pressed && styles.pressed,
 						]}
 						onPress={() => setRecurrence("yearly")}
 					>
+						<Feather
+							name="calendar"
+							size={21}
+							color={
+								recurrence === "yearly"
+									? colors.white
+									: colors.textSecondary
+							}
+						/>
+
 						<Text
 							style={[
 								styles.recurrenceButtonText,
-
 								recurrence === "yearly" &&
 									styles.recurrenceButtonTextSelected,
 							]}
@@ -403,121 +466,77 @@ export default function TemporaryPhotoScreen() {
 					</Pressable>
 				</View>
 
+				<Text style={styles.label}>
+					{recurrence === "once" ? "Duração" : "Exibir todo ano em"}
+				</Text>
+
+				<Pressable
+					onPress={
+						recurrence === "once"
+							? openDurationPicker
+							: openYearlyPicker
+					}
+					style={({ pressed }) => [pressed && styles.pressed]}
+				>
+					<Card padding="sm" style={styles.scheduleCard}>
+						<View style={styles.scheduleIcon}>
+							<Feather
+								name={
+									recurrence === "once" ? "clock" : "calendar"
+								}
+								size={23}
+								color={colors.textSecondary}
+							/>
+						</View>
+
+						<View style={styles.scheduleText}>
+							<Text style={styles.scheduleTitle}>
+								{recurrence === "once"
+									? durationMinutes
+										? formatDuration(durationMinutes)
+										: "Definir duração"
+									: yearlyDate
+										? formatYearlyDate(yearlyDate)
+										: "Definir dia e mês"}
+							</Text>
+
+							<Text style={styles.scheduleHint}>
+								{recurrence === "once"
+									? "A partir da primeira exibição"
+									: "Dia inteiro"}
+							</Text>
+						</View>
+
+						<Feather
+							name="chevron-right"
+							size={22}
+							color={colors.textSecondary}
+						/>
+					</Card>
+				</Pressable>
+
 				<View style={styles.infoBox}>
 					<Feather
-						name={recurrence === "once" ? "clock" : "repeat"}
-						size={19}
-						color="#666666"
+						name={recurrence === "once" ? "clock" : "calendar"}
+						size={22}
+						color={colors.textSecondary}
 					/>
 
 					<Text style={styles.infoText}>
 						{recurrence === "once"
-							? "A foto será exibida na próxima sincronização do quadro e permanecerá pelo tempo escolhido a partir do momento em que for exibida."
-							: "A foto ficará ativa no dia escolhido todos os anos, das 00:00 às 23:59 no fuso local do quadro."}
+							? "Será exibida na próxima sincronização e permanecerá pelo período escolhido."
+							: "Ficará ativa no dia escolhido todos os anos, durante o dia inteiro."}
 					</Text>
 				</View>
 
-				{recurrence === "once" ? (
-					<>
-						<Text style={styles.label}>Duração</Text>
-
-						<Pressable
-							style={styles.dateButton}
-							onPress={openDurationPicker}
-						>
-							<View>
-								<Text style={styles.datePlaceholder}>
-									{durationMinutes
-										? formatDuration(durationMinutes)
-										: "Definir duração"}
-								</Text>
-
-								<Text style={styles.dateHint}>
-									A partir da primeira exibição
-								</Text>
-							</View>
-
-							<Feather
-								name="chevron-right"
-								size={20}
-								color="#777777"
-							/>
-						</Pressable>
-					</>
-				) : (
-					<>
-						<Text style={styles.label}>Exibir todo ano em</Text>
-
-						<Pressable
-							style={styles.dateButton}
-							onPress={openYearlyPicker}
-						>
-							<View>
-								<Text style={styles.datePlaceholder}>
-									{yearlyDate
-										? formatYearlyDate(yearlyDate)
-										: "Definir dia e mês"}
-								</Text>
-
-								<Text style={styles.dateHint}>Dia inteiro</Text>
-							</View>
-
-							<Feather
-								name="chevron-right"
-								size={20}
-								color="#777777"
-							/>
-						</Pressable>
-					</>
-				)}
-
-				<View style={styles.rules}>
-					<Text style={styles.rulesTitle}>Como vai funcionar</Text>
-
-					<Text style={styles.rule}>
-						• SYNC faz o quadro buscar as alterações imediatamente.
-					</Text>
-
-					{recurrence === "once" ? (
-						<>
-							<Text style={styles.rule}>
-								• NEXT descarta a foto agendada antes do fim da
-								duração.
-							</Text>
-
-							<Text style={styles.rule}>
-								• Após o tempo escolhido, a foto deixa de ser exibida
-								e não fica no histórico.
-							</Text>
-						</>
-					) : (
-						<Text style={styles.rule}>
-							• A foto fica ativa somente no dia escolhido, todos
-							os anos.
-						</Text>
-					)}
-				</View>
-
-				<Pressable
-					disabled={!canSend || isSending}
-					style={[
-						styles.sendButton,
-
-						(!canSend || isSending) && styles.sendButtonDisabled,
-					]}
+				<PrimaryButton
+					title="Salvar foto agendada"
+					disabled={!canSend}
+					loading={isSending}
 					onPress={sendTemporaryPhoto}
-				>
-					{isSending ? (
-						<ActivityIndicator color="#ffffff" />
-					) : (
-						<Text style={styles.sendButtonText}>
-							{recurrence === "once"
-								? "Enviar foto agendada"
-								: "Enviar recorrência anual"}
-						</Text>
-					)}
-				</Pressable>
-			</ScrollView>
+					style={styles.saveButton}
+				/>
+			</Screen>
 
 			<Modal
 				visible={isDurationPickerOpen}
@@ -769,236 +788,145 @@ export default function TemporaryPhotoScreen() {
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-
-		backgroundColor: "#ffffff",
+	pressed: {
+		opacity: 0.72,
 	},
 
-	content: {
-		padding: 24,
-		paddingBottom: 32,
-	},
-
-	imagePlaceholder: {
-		height: 220,
-
-		borderWidth: 1,
-		borderColor: "#dddddd",
-
-		borderRadius: 12,
-
-		backgroundColor: "#f7f7f7",
-
-		alignItems: "center",
-
-		justifyContent: "center",
-
-		gap: 10,
-	},
-
-	imageContainer: {
-		height: 220,
-
-		borderWidth: 1,
-		borderColor: "#dddddd",
-
-		borderRadius: 12,
-
-		backgroundColor: "#f7f7f7",
-
+	photoCard: {
 		overflow: "hidden",
 	},
 
-	image: {
+	imageBase: {
+		borderRadius: radius.md,
+		backgroundColor: colors.surface,
+	},
+
+	imagePlaceholder: {
 		width: "100%",
-		height: "100%",
+		height: 88,
+		minHeight: 200,
+		borderRadius: radius.md,
+		backgroundColor: colors.surfaceMuted,
+		alignItems: "center",
+		justifyContent: "center",
+		gap: spacing.sm,
 	},
 
 	placeholderText: {
-		fontSize: 14,
-
-		color: "#777777",
+		...typography.metadata,
+		color: colors.textMuted,
 	},
 
-	secondaryButton: {
-		marginTop: 12,
-
-		height: 48,
-
-		borderWidth: 1,
-		borderColor: "#dddddd",
-
-		borderRadius: 12,
-
+	changePhotoButton: {
+		minHeight: 44,
+		marginTop: spacing.sm,
+		borderRadius: radius.md,
+		backgroundColor: colors.surfaceMuted,
 		flexDirection: "row",
-
 		alignItems: "center",
-
 		justifyContent: "center",
-
-		gap: 8,
+		gap: spacing.sm,
 	},
 
-	secondaryButtonText: {
-		fontSize: 15,
-
+	changePhotoButtonText: {
+		...typography.body,
 		fontWeight: "600",
-
-		color: "#222222",
-	},
-
-	infoBox: {
-		marginTop: 24,
-
-		flexDirection: "row",
-
-		alignItems: "flex-start",
-
-		gap: 10,
-
-		padding: 14,
-
-		borderRadius: 12,
-
-		backgroundColor: "#f5f5f5",
-	},
-
-	infoText: {
-		flex: 1,
-
-		fontSize: 14,
-
-		lineHeight: 20,
-
-		color: "#555555",
+		color: colors.textSecondary,
 	},
 
 	label: {
-		marginTop: 24,
-
-		marginBottom: 8,
-
-		fontSize: 15,
-
-		fontWeight: "600",
+		marginTop: spacing.xl,
+		marginBottom: spacing.sm,
+		...typography.cardTitle,
+		color: colors.text,
 	},
 
 	recurrenceSelector: {
 		flexDirection: "row",
-
-		gap: 10,
+		borderWidth: 1,
+		borderColor: colors.borderSoft,
+		borderRadius: radius.lg,
+		overflow: "hidden",
+		backgroundColor: colors.surface,
 	},
 
 	recurrenceButton: {
 		flex: 1,
-
-		paddingVertical: 12,
-
-		borderWidth: 1,
-		borderColor: "#dddddd",
-
-		borderRadius: 10,
-
+		minHeight: 50,
+		flexDirection: "row",
 		alignItems: "center",
+		justifyContent: "center",
+		gap: spacing.sm,
+		backgroundColor: colors.surface,
 	},
 
 	recurrenceButtonSelected: {
-		backgroundColor: "#111111",
-
-		borderColor: "#111111",
+		margin: 4,
+		minHeight: 42,
+		borderRadius: radius.md,
+		backgroundColor: colors.primary,
 	},
 
 	recurrenceButtonText: {
-		fontSize: 14,
-
+		...typography.body,
 		fontWeight: "600",
-
-		color: "#444444",
+		color: colors.textSecondary,
 	},
 
 	recurrenceButtonTextSelected: {
-		color: "#ffffff",
+		color: colors.white,
 	},
 
-	dateButton: {
-		borderWidth: 1,
-
-		borderColor: "#dddddd",
-
-		borderRadius: 12,
-
-		padding: 15,
-
+	scheduleCard: {
+		minHeight: 74,
 		flexDirection: "row",
-
 		alignItems: "center",
-
-		justifyContent: "space-between",
+		gap: spacing.md,
 	},
 
-	datePlaceholder: {
-		fontSize: 15,
-
-		fontWeight: "500",
-	},
-
-	dateHint: {
-		marginTop: 3,
-
-		fontSize: 12,
-
-		color: "#888888",
-	},
-
-	rules: {
-		marginTop: 26,
-
-		gap: 7,
-	},
-
-	rulesTitle: {
-		marginBottom: 3,
-
-		fontSize: 15,
-
-		fontWeight: "600",
-	},
-
-	rule: {
-		fontSize: 13,
-
-		lineHeight: 19,
-
-		color: "#666666",
-	},
-
-	sendButton: {
-		marginTop: 28,
-
-		backgroundColor: "#111111",
-
-		borderRadius: 12,
-
-		paddingVertical: 14,
-
+	scheduleIcon: {
+		width: 52,
+		height: 52,
+		borderRadius: radius.md,
+		backgroundColor: colors.surfaceMuted,
 		alignItems: "center",
-
-		minHeight: 48,
-
 		justifyContent: "center",
 	},
 
-	sendButtonDisabled: {
-		backgroundColor: "#bdbdbd",
+	scheduleText: {
+		flex: 1,
+		minWidth: 0,
 	},
 
-	sendButtonText: {
-		color: "#ffffff",
+	scheduleTitle: {
+		...typography.cardTitle,
+		color: colors.text,
+	},
 
-		fontSize: 16,
+	scheduleHint: {
+		marginTop: spacing.xs,
+		...typography.metadata,
+		color: colors.textSecondary,
+	},
 
-		fontWeight: "600",
+	infoBox: {
+		marginTop: spacing.lg,
+		padding: spacing.lg,
+		borderRadius: radius.lg,
+		backgroundColor: colors.surfaceMuted,
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: spacing.md,
+	},
+
+	infoText: {
+		flex: 1,
+		...typography.body,
+		color: colors.textSecondary,
+	},
+
+	saveButton: {
+		marginTop: spacing.xxl,
 	},
 
 	modalOverlay: {
@@ -1012,7 +940,7 @@ const styles = StyleSheet.create({
 	},
 
 	pickerCard: {
-		backgroundColor: "#ffffff",
+		backgroundColor: colors.surface,
 
 		borderRadius: 18,
 
@@ -1042,7 +970,7 @@ const styles = StyleSheet.create({
 
 		fontSize: 13,
 
-		color: "#777777",
+		color: colors.textSecondary,
 	},
 
 	closeButton: {
@@ -1056,7 +984,7 @@ const styles = StyleSheet.create({
 
 		borderRadius: 18,
 
-		backgroundColor: "#f3f3f3",
+		backgroundColor: colors.surfaceMuted,
 	},
 
 	quickDates: {
@@ -1074,7 +1002,7 @@ const styles = StyleSheet.create({
 
 		borderWidth: 1,
 
-		borderColor: "#dddddd",
+		borderColor: colors.border,
 
 		borderRadius: 10,
 
@@ -1082,9 +1010,9 @@ const styles = StyleSheet.create({
 	},
 
 	quickDateButtonSelected: {
-		backgroundColor: "#111111",
+		backgroundColor: colors.primary,
 
-		borderColor: "#111111",
+		borderColor: colors.primary,
 	},
 
 	quickDateText: {
@@ -1092,11 +1020,11 @@ const styles = StyleSheet.create({
 
 		fontWeight: "600",
 
-		color: "#444444",
+		color: colors.textSecondary,
 	},
 
 	quickDateTextSelected: {
-		color: "#ffffff",
+		color: colors.white,
 	},
 
 	pickerLabel: {
@@ -1104,7 +1032,7 @@ const styles = StyleSheet.create({
 
 		fontWeight: "600",
 
-		color: "#666666",
+		color: colors.textSecondary,
 
 		marginBottom: 8,
 	},
@@ -1118,7 +1046,7 @@ const styles = StyleSheet.create({
 
 		borderWidth: 1,
 
-		borderColor: "#dddddd",
+		borderColor: colors.border,
 
 		borderRadius: 12,
 
@@ -1198,7 +1126,7 @@ const styles = StyleSheet.create({
 
 		borderWidth: 1,
 
-		borderColor: "#dddddd",
+		borderColor: colors.border,
 
 		borderRadius: 10,
 
@@ -1220,7 +1148,7 @@ const styles = StyleSheet.create({
 
 		fontWeight: "600",
 
-		color: "#444444",
+		color: colors.textSecondary,
 	},
 
 	invalidTimeText: {
@@ -1262,7 +1190,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 14,
 
 		borderWidth: 1,
-		borderColor: "#dddddd",
+		borderColor: colors.border,
 
 		borderRadius: 10,
 
@@ -1280,7 +1208,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 9,
 
 		borderWidth: 1,
-		borderColor: "#dddddd",
+		borderColor: colors.border,
 
 		borderRadius: 10,
 
@@ -1297,7 +1225,7 @@ const styles = StyleSheet.create({
 	confirmButton: {
 		marginTop: 18,
 
-		backgroundColor: "#111111",
+		backgroundColor: colors.primary,
 
 		borderRadius: 12,
 
@@ -1307,11 +1235,11 @@ const styles = StyleSheet.create({
 	},
 
 	confirmButtonDisabled: {
-		backgroundColor: "#bdbdbd",
+		backgroundColor: colors.disabled,
 	},
 
 	confirmButtonText: {
-		color: "#ffffff",
+		color: colors.white,
 
 		fontSize: 16,
 

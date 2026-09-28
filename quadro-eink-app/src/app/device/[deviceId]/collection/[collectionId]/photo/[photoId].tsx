@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import {
 	ActivityIndicator,
@@ -6,7 +6,6 @@ import {
 	Image,
 	Pressable,
 	StyleSheet,
-	Switch,
 	Text,
 	View,
 } from "react-native";
@@ -14,21 +13,27 @@ import {
 import {
 	router,
 	Stack,
-	useLocalSearchParams,
 	useFocusEffect,
+	useLocalSearchParams,
 } from "expo-router";
 
 import { Feather, Ionicons } from "@expo/vector-icons";
 
+import { Screen } from "@/components/layout/Screen";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
+import { AppSwitch } from "@/components/ui/AppSwitch";
+
+import { colors, radius, spacing, typography } from "@/theme";
+
 import { deletePhoto, getPhoto, setPhotoActive } from "@/firebase/photos";
 
 import { getCachedStorageFileUri } from "@/firebase/storage";
+import { getDevice } from "@/firebase/devices";
+import { getPhotoCollection } from "@/firebase/collections";
 
 import type { Photo } from "@/types/photo";
-
-import { getDevice } from "@/firebase/devices";
-
 import type { Device } from "@/types/device";
+import type { PhotoCollection } from "@/types/photo-collection";
 
 export default function PhotoScreen() {
 	const { deviceId, collectionId, photoId } = useLocalSearchParams<{
@@ -39,56 +44,60 @@ export default function PhotoScreen() {
 
 	const [device, setDevice] = useState<Device | null>(null);
 
+	const [photoCollection, setPhotoCollection] =
+		useState<PhotoCollection | null>(null);
+
 	const [photo, setPhoto] = useState<Photo | null>(null);
 
 	const [loading, setLoading] = useState(true);
 
 	const [updatingActive, setUpdatingActive] = useState(false);
 
+	const [deleting, setDeleting] = useState(false);
+
 	const [previewUri, setPreviewUri] = useState<string | null>(null);
 
 	useFocusEffect(
 		useCallback(() => {
 			const load = async () => {
-				{
-					try {
-						const [loadedPhoto, loadedDevice] = await Promise.all([
-							getPhoto(deviceId, collectionId, photoId),
+				try {
+					setLoading(true);
 
+					const [loadedPhoto, loadedDevice, loadedCollection] =
+						await Promise.all([
+							getPhoto(deviceId, collectionId, photoId),
 							getDevice(deviceId),
+							getPhotoCollection(deviceId, collectionId),
 						]);
 
-						if (!loadedPhoto) {
-							Alert.alert("Foto não encontrada");
+					if (!loadedPhoto) {
+						Alert.alert("Foto não encontrada");
 
-							router.back();
-							return;
-						}
-
-						if (!loadedDevice) {
-							Alert.alert("Quadro não encontrado");
-
-							router.back();
-							return;
-						}
-
-						const loadedPreviewUri = await getCachedStorageFileUri(
-							loadedPhoto.previewPath,
-						);
-
-						setPhoto(loadedPhoto);
-						setDevice(loadedDevice);
-						setPreviewUri(loadedPreviewUri);
-					} catch (error) {
-						console.error("Erro ao carregar foto:", error);
-
-						Alert.alert(
-							"Erro",
-							"Não foi possível carregar a foto.",
-						);
-					} finally {
-						setLoading(false);
+						router.back();
+						return;
 					}
+
+					if (!loadedDevice) {
+						Alert.alert("Quadro não encontrado");
+
+						router.back();
+						return;
+					}
+
+					const loadedPreviewUri = await getCachedStorageFileUri(
+						loadedPhoto.previewPath,
+					);
+
+					setPhoto(loadedPhoto);
+					setDevice(loadedDevice);
+					setPhotoCollection(loadedCollection);
+					setPreviewUri(loadedPreviewUri);
+				} catch (error) {
+					console.error("Erro ao carregar foto:", error);
+
+					Alert.alert("Erro", "Não foi possível carregar a foto.");
+				} finally {
+					setLoading(false);
 				}
 			};
 
@@ -119,8 +128,21 @@ export default function PhotoScreen() {
 		}
 	};
 
+	const handleEditDescription = () => {
+		router.push({
+			pathname:
+				"/device/[deviceId]/collection/[collectionId]/photo/[photoId]/description",
+
+			params: {
+				deviceId,
+				collectionId,
+				photoId,
+			},
+		});
+	};
+
 	const handleDelete = () => {
-		if (!photo) {
+		if (!photo || deleting) {
 			return;
 		}
 
@@ -132,13 +154,14 @@ export default function PhotoScreen() {
 					text: "Cancelar",
 					style: "cancel",
 				},
-
 				{
 					text: "Excluir",
 					style: "destructive",
 
 					onPress: async () => {
 						try {
+							setDeleting(true);
+
 							await deletePhoto(deviceId, collectionId, photo);
 
 							router.back();
@@ -149,6 +172,8 @@ export default function PhotoScreen() {
 								"Erro",
 								"Não foi possível excluir a foto.",
 							);
+
+							setDeleting(false);
 						}
 					},
 				},
@@ -158,9 +183,13 @@ export default function PhotoScreen() {
 
 	if (loading) {
 		return (
-			<View style={styles.loading}>
-				<ActivityIndicator size="large" />
-			</View>
+			<>
+				<Stack.Screen options={{ headerShown: false }} />
+
+				<View style={styles.loading}>
+					<ActivityIndicator size="large" color={colors.primary} />
+				</View>
+			</>
 		);
 	}
 
@@ -174,43 +203,51 @@ export default function PhotoScreen() {
 	const orientationMismatch =
 		device !== null && photoOrientation !== device.orientation;
 
+	const previewAspectRatio = photo.width / photo.height;
+
 	return (
 		<>
-			<Stack.Screen
-				options={{
-					title: "Foto",
+			<Stack.Screen options={{ headerShown: false }} />
 
-					headerRight: () => (
-						<Pressable onPress={handleDelete} hitSlop={12}>
-							<Ionicons
-								name="trash-outline"
-								size={21}
-								color="#666666"
-							/>
-						</Pressable>
-					),
-				}}
-			/>
+			<Screen scroll>
+				<ScreenHeader
+					title="Foto"
+					subtitle={[photoCollection?.name, device?.name]
+						.filter(Boolean)
+						.join(" · ")}
+					showBackButton
+				/>
 
-			<View style={styles.container}>
-				<View style={styles.previewContainer}>
-					{previewUri && (
+				{previewUri ? (
+					<View style={styles.previewArea}>
 						<Image
-							source={{
-								uri: previewUri,
-							}}
-							style={styles.preview}
+							source={{ uri: previewUri }}
+							style={
+								photoOrientation === "portrait"
+									? [
+											styles.previewPortrait,
+											{
+												aspectRatio: previewAspectRatio,
+											},
+										]
+									: [
+											styles.previewLandscape,
+											{
+												aspectRatio: previewAspectRatio,
+											},
+										]
+							}
 							resizeMode="contain"
 						/>
-					)}
-				</View>
+					</View>
+				) : null}
 
-				{orientationMismatch && (
+				{orientationMismatch ? (
 					<View style={styles.orientationWarning}>
 						<Ionicons
 							name="warning-outline"
 							size={20}
-							color="#7a5a00"
+							color={colors.textSecondary}
 						/>
 
 						<Text style={styles.orientationWarningText}>
@@ -225,205 +262,173 @@ export default function PhotoScreen() {
 							. Ela não será exibida.
 						</Text>
 					</View>
-				)}
+				) : null}
 
-				<View style={styles.descriptionSection}>
-					<View style={styles.descriptionHeader}>
-						<Text style={styles.descriptionTitle}>Descrição</Text>
+				<View style={styles.activeRow}>
+					<Text style={styles.activeTitle}>Foto ativa</Text>
 
-						<Pressable
-							style={styles.descriptionEditButton}
-							onPress={() =>
-								router.push({
-									pathname:
-										"/device/[deviceId]/collection/[collectionId]/photo/[photoId]/description",
-
-									params: {
-										deviceId,
-										collectionId,
-										photoId,
-									},
-								})
-							}
-						>
-							<Feather
-								name={photo.description ? "edit" : "plus"}
-								size={22}
-								color="#333333"
-							/>
-						</Pressable>
-					</View>
-
-					{photo.description ? (
-						<Text style={styles.descriptionText}>
-							{photo.description}
-						</Text>
-					) : (
-						<Text style={styles.noDescription}>
-							Nenhuma descrição
-						</Text>
-					)}
-				</View>
-
-				<View style={styles.option}>
-					<View>
-						<Text style={styles.optionTitle}>Foto ativa</Text>
-
-						<Text style={styles.optionDescription}>
-							Fotos desativadas não serão mostradas pelo quadro.
-						</Text>
-					</View>
-
-					<Switch
+					<AppSwitch
 						value={photo.active}
 						disabled={updatingActive}
 						onValueChange={handleActiveChange}
 					/>
 				</View>
-			</View>
+
+				<Text style={styles.sectionTitle}>Descrição</Text>
+
+				<Pressable
+					style={({ pressed }) => [
+						styles.descriptionCard,
+						pressed && styles.pressed,
+					]}
+					onPress={handleEditDescription}
+				>
+					<Text
+						style={[
+							styles.descriptionText,
+							!photo.description && styles.descriptionPlaceholder,
+						]}
+						numberOfLines={3}
+					>
+						{photo.description || "Nenhuma descrição"}
+					</Text>
+
+					<Feather
+						name="edit-2"
+						size={21}
+						color={colors.textSecondary}
+					/>
+				</Pressable>
+
+				<Pressable
+					disabled={deleting}
+					onPress={handleDelete}
+					style={({ pressed }) => [
+						styles.deleteButton,
+						pressed && !deleting && styles.pressed,
+						deleting && styles.deleteButtonDisabled,
+					]}
+				>
+					{deleting ? (
+						<ActivityIndicator size="small" color={colors.danger} />
+					) : (
+						<Text style={styles.deleteButtonText}>
+							Excluir foto
+						</Text>
+					)}
+				</Pressable>
+			</Screen>
 		</>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-
-		backgroundColor: "#ffffff",
-
-		padding: 24,
-	},
-
 	loading: {
 		flex: 1,
-
-		backgroundColor: "#ffffff",
-
-		justifyContent: "center",
-
+		backgroundColor: colors.background,
 		alignItems: "center",
+		justifyContent: "center",
 	},
 
-	previewContainer: {
-		flex: 1,
-
-		backgroundColor: "#f2f2f2",
-
-		borderRadius: 12,
-
-		overflow: "hidden",
-
-		justifyContent: "center",
-
-		alignItems: "center",
+	pressed: {
+		opacity: 0.72,
 	},
 
-	preview: {
+	previewArea: {
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	previewLandscape: {
 		width: "100%",
-		height: "100%",
+		borderRadius: radius.lg,
+		backgroundColor: colors.surface,
 	},
 
-	option: {
-		marginTop: 24,
-
-		marginBottom: 16,
-
-		flexDirection: "row",
-
-		alignItems: "center",
-
-		justifyContent: "space-between",
-
-		gap: 20,
+	previewPortrait: {
+		height: 380,
+		maxWidth: "100%",
+		borderRadius: radius.lg,
+		backgroundColor: colors.surface,
 	},
 
-	optionTitle: {
-		fontSize: 16,
-
-		fontWeight: "600",
-	},
-
-	optionDescription: {
-		marginTop: 4,
-
-		maxWidth: 260,
-
-		fontSize: 13,
-
-		lineHeight: 18,
-
-		color: "#666666",
-	},
 	orientationWarning: {
-		marginTop: 20,
-
+		marginTop: spacing.lg,
+		padding: spacing.md,
+		borderRadius: radius.lg,
+		backgroundColor: colors.surfaceMuted,
 		flexDirection: "row",
 		alignItems: "flex-start",
-
-		gap: 10,
-
-		padding: 14,
-
-		borderRadius: 10,
-
-		backgroundColor: "#fff6d8",
+		gap: spacing.sm,
 	},
 
 	orientationWarningText: {
 		flex: 1,
-
-		fontSize: 13,
-		lineHeight: 18,
-
-		color: "#604800",
-	},
-	descriptionSection: {
-		marginTop: 28,
-
-		borderWidth: 1,
-		borderColor: "#e2e2e2",
-		borderRadius: 12,
-
-		padding: 16,
-
-		backgroundColor: "#ffffff",
+		...typography.metadata,
+		color: colors.textSecondary,
 	},
 
-	descriptionHeader: {
+	activeRow: {
+		marginTop: spacing.xl,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 	},
 
-	descriptionTitle: {
-		fontSize: 16,
-		fontWeight: "600",
+	activeTitle: {
+		...typography.cardTitle,
+		color: colors.text,
 	},
 
-	descriptionEditButton: {
-		width: 36,
-		height: 36,
+	sectionTitle: {
+		marginTop: spacing.xxl,
+		marginBottom: spacing.sm,
+		...typography.sectionTitle,
+		fontSize: 20,
+		lineHeight: 26,
+		color: colors.text,
+	},
 
+	descriptionCard: {
+		minHeight: 66,
+		paddingHorizontal: spacing.lg,
+		paddingVertical: spacing.md,
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: radius.lg,
+		backgroundColor: colors.surface,
+		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "center",
-
-		borderRadius: 18,
+		gap: spacing.md,
 	},
 
 	descriptionText: {
-		marginTop: 10,
-
-		fontSize: 15,
-		lineHeight: 21,
-
-		color: "#333333",
+		flex: 1,
+		...typography.body,
+		color: colors.textSecondary,
 	},
 
-	noDescription: {
-		marginTop: 10,
+	descriptionPlaceholder: {
+		color: colors.textMuted,
+	},
 
-		fontSize: 14,
+	deleteButton: {
+		minHeight: 52,
+		marginTop: spacing.xl,
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: radius.lg,
+		backgroundColor: colors.surface,
+		alignItems: "center",
+		justifyContent: "center",
+	},
 
-		color: "#888888",
+	deleteButtonDisabled: {
+		opacity: 0.5,
+	},
+
+	deleteButtonText: {
+		...typography.button,
+		color: colors.danger,
 	},
 });

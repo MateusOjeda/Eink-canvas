@@ -335,7 +335,8 @@ export default function DeviceScreen() {
 									style={styles.smallIconButton}
 									onPress={() =>
 										router.push({
-											pathname: "/edit-collection",
+											pathname:
+												"/device/[deviceId]/edit-collection",
 											params: {
 												deviceId,
 												collectionId:
@@ -376,7 +377,7 @@ export default function DeviceScreen() {
 					style={styles.addButton}
 					onPress={() =>
 						router.push({
-							pathname: "/edit-collection",
+							pathname: "/device/[deviceId]/edit-collection",
 							params: {
 								deviceId,
 							},

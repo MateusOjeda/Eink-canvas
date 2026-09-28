@@ -13,11 +13,7 @@ import {
 
 import { router, Stack, useFocusEffect } from "expo-router";
 
-import {
-	Feather,
-	Ionicons,
-	MaterialCommunityIcons,
-} from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { Screen } from "@/components/layout/Screen";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
@@ -235,8 +231,7 @@ export default function HomeScreen() {
 											}
 											style={({ pressed }) => [
 												styles.deviceInfo,
-												pressed &&
-													styles.devicePressed,
+												pressed && styles.devicePressed,
 											]}
 										>
 											<Text style={styles.deviceName}>
@@ -253,9 +248,7 @@ export default function HomeScreen() {
 												<Feather
 													name="clock"
 													size={18}
-													color={
-														colors.textSecondary
-													}
+													color={colors.textSecondary}
 												/>
 
 												<Text style={styles.metaText}>
@@ -282,9 +275,7 @@ export default function HomeScreen() {
 												<MaterialCommunityIcons
 													name="image-multiple-outline"
 													size={20}
-													color={
-														colors.textSecondary
-													}
+													color={colors.textSecondary}
 												/>
 
 												<Text style={styles.metaText}>
@@ -294,15 +285,13 @@ export default function HomeScreen() {
 												</Text>
 											</Pressable>
 
-											<View
-												style={styles.deviceActions}
-											>
+											<View style={styles.deviceActions}>
 												<IconButton
 													accessibilityLabel={`Editar ${device.name}`}
 													onPress={() =>
 														router.push({
 															pathname:
-																"/device/[deviceId]/edit",
+																"/edit-device",
 															params: {
 																deviceId:
 																	device.id,
@@ -351,11 +340,7 @@ export default function HomeScreen() {
 					style={styles.addButton}
 					onPress={() => router.push("/register-device")}
 					leftIcon={
-						<Ionicons
-							name="add"
-							size={28}
-							color={colors.white}
-						/>
+						<Ionicons name="add" size={28} color={colors.white} />
 					}
 				/>
 			</Screen>

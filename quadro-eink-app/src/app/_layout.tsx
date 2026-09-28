@@ -169,7 +169,7 @@ export default function RootLayout() {
 				/>
 
 				<Stack.Screen
-					name="device/[deviceId]/edit"
+					name="edit-device"
 					options={{
 						title: "Editar quadro",
 					}}

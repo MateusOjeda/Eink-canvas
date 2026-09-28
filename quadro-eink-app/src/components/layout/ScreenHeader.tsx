@@ -91,11 +91,12 @@ const styles = StyleSheet.create({
 	},
 
 	topRow: {
+		marginTop: -spacing.lg,
 		minHeight: 44,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		marginBottom: spacing.xs,
+		marginBottom: spacing.md,
 	},
 
 	backButton: {
