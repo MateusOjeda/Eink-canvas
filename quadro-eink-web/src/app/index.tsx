@@ -289,7 +289,7 @@ export default function HomeScreen() {
 						Escolha um quadro
 					</Text>
 
-					<Pressable
+					{/* <Pressable
 						style={({ pressed }) => [
 							styles.headerActionButton,
 							pressed && styles.pressed,
@@ -306,7 +306,7 @@ export default function HomeScreen() {
 								color="#5E9188"
 							/>
 						)}
-					</Pressable>
+					</Pressable> */}
 				</View>
 
 				<Text style={styles.description}>

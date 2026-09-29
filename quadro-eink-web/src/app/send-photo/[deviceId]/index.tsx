@@ -71,6 +71,15 @@ export default function PickPhotoScreen() {
 		});
 	};
 
+	const handleBack = () => {
+		if (router.canGoBack()) {
+			router.back();
+			return;
+		}
+
+		router.replace("/");
+	};
+
 	return (
 		<View style={[styles.screen, compact && styles.screenCompact]}>
 			<View style={[styles.card, compact && styles.cardCompact]}>
@@ -81,7 +90,7 @@ export default function PickPhotoScreen() {
 							pressed && styles.pressed,
 						]}
 						hitSlop={10}
-						onPress={() => router.back()}
+						onPress={handleBack}
 					>
 						<Feather name="arrow-left" size={26} color="#4A4F54" />
 					</Pressable>
