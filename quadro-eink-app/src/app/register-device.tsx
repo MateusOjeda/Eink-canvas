@@ -11,7 +11,7 @@ import {
 	type ImageSourcePropType,
 } from "react-native";
 
-import { router, Stack } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 
 import { Feather, Ionicons } from "@expo/vector-icons";
 
@@ -33,6 +33,7 @@ type DisplayOption = {
 	model: string;
 	resolution: string;
 	image: ImageSourcePropType;
+	imageGrayscale: ImageSourcePropType;
 };
 
 type CreatedDevice = {
@@ -49,6 +50,7 @@ const DISPLAY_OPTIONS: DisplayOption[] = [
 		model: "GDEP073E01",
 		resolution: "800 × 480 px",
 		image: require("../../assets/devices/spectra6-7.3.png"),
+		imageGrayscale: require("../../assets/devices/spectra6-7.3-grayscale.png"),
 	},
 	{
 		value: "spectra6-13.3",
@@ -56,6 +58,7 @@ const DISPLAY_OPTIONS: DisplayOption[] = [
 		model: "GDEP133E01",
 		resolution: "1600 × 1200 px",
 		image: require("../../assets/devices/spectra6-13.3.png"),
+		imageGrayscale: require("../../assets/devices/spectra6-13.3-grayscale.png"),
 	},
 ];
 
@@ -71,13 +74,15 @@ function getOrientationLabel(orientation: DisplayOrientation) {
 }
 
 export default function RegisterDeviceScreen() {
+	const { mac, displayType } = useLocalSearchParams<{
+		mac: string;
+		displayType: DisplayType;
+	}>();
+
 	const [orientation, setOrientation] =
 		useState<DisplayOrientation>("portrait");
 
-	const [deviceId, setDeviceId] = useState("");
 	const [name, setName] = useState("");
-
-	const [displayType, setDisplayType] = useState<DisplayType>("spectra6-7.3");
 
 	const [updateIntervalMinutes, setUpdateIntervalMinutes] = useState("120");
 
@@ -88,7 +93,7 @@ export default function RegisterDeviceScreen() {
 	);
 
 	const saveDevice = async () => {
-		const id = deviceId.trim();
+		const id = mac;
 		const deviceName = name.trim();
 
 		const interval = Number(updateIntervalMinutes);
@@ -251,7 +256,11 @@ export default function RegisterDeviceScreen() {
 
 					<PrimaryButton
 						title="Concluir"
-						onPress={() => router.back()}
+						onPress={() =>
+							router.replace({
+								pathname: "/",
+							})
+						}
 						rightIcon={
 							<Feather
 								name="arrow-right"
@@ -277,18 +286,6 @@ export default function RegisterDeviceScreen() {
 					style={styles.header}
 				/>
 
-				<Text style={styles.label}>ID do dispositivo</Text>
-
-				<TextInput
-					value={deviceId}
-					onChangeText={setDeviceId}
-					placeholder="Ex.: d73584a9e12b4e5c..."
-					placeholderTextColor={colors.textMuted}
-					autoCapitalize="none"
-					autoCorrect={false}
-					style={styles.input}
-				/>
-
 				<Text style={styles.label}>Nome do dispositivo</Text>
 
 				<TextInput
@@ -308,7 +305,7 @@ export default function RegisterDeviceScreen() {
 						return (
 							<Pressable
 								key={option.value}
-								onPress={() => setDisplayType(option.value)}
+								disabled
 								style={({ pressed }) => [
 									styles.modelCard,
 									selected && styles.modelCardSelected,
@@ -328,7 +325,11 @@ export default function RegisterDeviceScreen() {
 								</View>
 
 								<Image
-									source={option.image}
+									source={
+										selected
+											? option.image
+											: option.imageGrayscale
+									}
 									style={styles.modelImage}
 									resizeMode="contain"
 								/>

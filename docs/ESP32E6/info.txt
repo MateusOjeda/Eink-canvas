@@ -1,0 +1,17 @@
+Arduino IDE 2.0.4
+
+BOARD: - esp32 expressif systems  - v3.0.7 - arduino IDE: esp32s3 dev module 
+
+minha placa: esp32-s3-wroom-1 MCN16R8
+
+tools: 
+- USB CDC on BOOT - enabled
+- flash size: 16MB (128Mb)
+- Partition Scheme: Default 4MB with spiffs (ou o que preferir para gerenciar arquivos)
+- PSRAM: OPI PSRAM (ou QSPSRAM caso dê erro de inicialização na RAM ao compilar, mas o WROOM-1 com supressão de 16R8 normalmente usa PSRAM em barramento Octal/Quad).
+
+
+SW11 - KEY3 - IO42
+SW12 - KEY4 - IO41
+SW3 - KEY2 - IO9
+SW2 - KEY1 - IO46

@@ -32,7 +32,13 @@
 				}
 			],
 			"@react-native-google-signin/google-signin",
-			"expo-notifications"
+			"expo-notifications",
+			[
+				"@orbital-systems/react-native-esp-idf-provisioning",
+				{
+					"neverForLocation": true
+				}
+			]
 		],
 		"experiments": {
 			"typedRoutes": true,

@@ -338,7 +338,7 @@ export default function HomeScreen() {
 				<PrimaryButton
 					title="Adicionar dispositivo"
 					style={styles.addButton}
-					onPress={() => router.push("/register-device")}
+					onPress={() => router.push("/wifi-config")}
 					leftIcon={
 						<Ionicons name="add" size={28} color={colors.white} />
 					}
