@@ -11,7 +11,7 @@ import {
 	TextInput,
 	View,
 } from "react-native";
-import { useRouter, Stack } from "expo-router";
+import { useRouter, Stack, useLocalSearchParams } from "expo-router";
 
 import {
 	ESPDevice,
@@ -93,6 +93,12 @@ type DeviceInfo = {
 
 export default function WifiConfigScreen() {
 	const router = useRouter();
+
+	const { mode } = useLocalSearchParams<{
+		mode?: "register" | "wifi-only";
+	}>();
+
+	const isWifiOnly = mode === "wifi-only";
 
 	const bleManager = useRef(new BleManager()).current;
 
@@ -412,6 +418,11 @@ export default function WifiConfigScreen() {
 			await device.provision(ssid.trim(), password);
 
 			console.log("Configuração Wi-Fi enviada com sucesso.");
+
+			if (isWifiOnly) {
+				router.back();
+				return;
+			}
 
 			router.push({
 				pathname: "/register-device",

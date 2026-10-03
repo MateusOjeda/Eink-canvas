@@ -127,6 +127,15 @@ export default function EditDeviceScreen() {
 		}
 	};
 
+	const openWifiConfig = () => {
+		router.push({
+			pathname: "/wifi-config",
+			params: {
+				mode: "wifi-only",
+			},
+		});
+	};
+
 	if (loading) {
 		return (
 			<>
@@ -308,6 +317,34 @@ export default function EditDeviceScreen() {
 						disabled={!canSave}
 						style={styles.saveButton}
 					/>
+
+					<View style={styles.wifiSection}>
+						<Text style={styles.sectionTitle}>Wi-Fi</Text>
+
+						<Pressable
+							onPress={openWifiConfig}
+							style={({ pressed }) => [
+								styles.wifiButton,
+								pressed && styles.pressed,
+							]}
+						>
+							<Ionicons
+								name="wifi-outline"
+								size={22}
+								color={colors.primaryPressed}
+							/>
+
+							<Text style={styles.wifiButtonText}>
+								Configurar Wi-Fi
+							</Text>
+
+							<Ionicons
+								name="chevron-forward"
+								size={20}
+								color={colors.textMuted}
+							/>
+						</Pressable>
+					</View>
 				</Screen>
 			</KeyboardAvoidingView>
 		</>
@@ -441,5 +478,37 @@ const styles = StyleSheet.create({
 
 	saveButton: {
 		marginTop: spacing.xxl,
+	},
+
+	wifiSection: {
+		marginTop: spacing.xxl,
+		paddingTop: spacing.xl,
+		borderTopWidth: 1,
+		borderTopColor: colors.border,
+	},
+
+	sectionTitle: {
+		...typography.cardTitle,
+		color: colors.text,
+		marginBottom: spacing.sm,
+	},
+
+	wifiButton: {
+		minHeight: 52,
+		paddingHorizontal: spacing.lg,
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: radius.lg,
+		backgroundColor: colors.surface,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.md,
+	},
+
+	wifiButtonText: {
+		flex: 1,
+		...typography.body,
+		fontWeight: "600",
+		color: colors.text,
 	},
 });
