@@ -74,9 +74,10 @@ function getOrientationLabel(orientation: DisplayOrientation) {
 }
 
 export default function RegisterDeviceScreen() {
-	const { mac, displayType } = useLocalSearchParams<{
-		mac: string;
+	const { id, displayType, firebaseUid } = useLocalSearchParams<{
+		id: string;
 		displayType: DisplayType;
+		firebaseUid: string;
 	}>();
 
 	const [orientation, setOrientation] =
@@ -93,7 +94,6 @@ export default function RegisterDeviceScreen() {
 	);
 
 	const saveDevice = async () => {
-		const id = mac;
 		const deviceName = name.trim();
 
 		const interval = Number(updateIntervalMinutes);
@@ -134,6 +134,7 @@ export default function RegisterDeviceScreen() {
 				displayType,
 				orientation,
 				updateIntervalMinutes: interval,
+				deviceAuthUid: firebaseUid,
 			});
 
 			setCreatedDevice({

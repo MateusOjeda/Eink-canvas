@@ -223,13 +223,6 @@ export default function RootLayout() {
 						title: "Prévia",
 					}}
 				/>
-
-				<Stack.Screen
-					name="settings"
-					options={{
-						title: "Configurações",
-					}}
-				/>
 			</Stack>
 		</GestureHandlerRootView>
 	);

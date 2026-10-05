@@ -26,6 +26,8 @@ import { Screen } from "@/components/layout/Screen";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 
+import { updateDeviceAuthUid } from "@/firebase/devices";
+
 import { colors, radius, spacing, typography } from "@/theme";
 
 const SERVICE_NAME = "QuadroEink";
@@ -34,6 +36,12 @@ const POP = "12345678";
 const DEVICE_SERVICE_UUID = "7b7c0001-4e69-4d91-9a31-7d5e8f000001";
 
 const DEVICE_MAC_CHARACTERISTIC_UUID = "7b7c0002-4e69-4d91-9a31-7d5e8f000001";
+
+const STATUS_SERVICE_UUID = "7b7c1001-4e69-4d91-9a31-7d5e8f000001";
+
+const STATUS_CHARACTERISTIC_UUID = "7b7c1002-4e69-4d91-9a31-7d5e8f000001";
+
+const STATUS_DEVICE_NAME = "QuadroEinkStatus";
 
 export type DisplayType = "spectra6-7.3" | "spectra6-13.3";
 
@@ -106,13 +114,14 @@ export default function WifiConfigScreen() {
 	const [device, setDevice] = useState<ESPDevice | null>(null);
 	const [connecting, setConnecting] = useState(false);
 
-	const [ssid, setSsid] = useState("");
-	const [password, setPassword] = useState("");
+	const [ssid, setSsid] = useState("OJEDA");
+	const [password, setPassword] = useState("mateus118");
 	const [provisioning, setProvisioning] = useState(false);
 
 	const [wifiMac, setWifiMac] = useState<string | null>(null);
 	const [displayType, setDisplayType] = useState<DisplayType | null>(null);
 	const [readingMac, setReadingMac] = useState(false);
+	const [startingProvisioning, setStartingProvisioning] = useState(false);
 
 	useEffect(() => {
 		return () => {
@@ -347,6 +356,7 @@ export default function WifiConfigScreen() {
 
 			setWifiMac(deviceInfo.mac);
 			setDisplayType(deviceInfo.displayType);
+			setStartingProvisioning(true);
 
 			await new Promise((resolve) => setTimeout(resolve, 3000));
 
@@ -383,7 +393,105 @@ export default function WifiConfigScreen() {
 		} finally {
 			setScanning(false);
 			setReadingMac(false);
+			setStartingProvisioning(false);
 		}
+	};
+
+	const waitForWifiStatus = async (): Promise<string | null> => {
+		return new Promise((resolve) => {
+			let finished = false;
+
+			const finish = (status: string | null) => {
+				if (finished) {
+					return;
+				}
+
+				finished = true;
+				bleManager.stopDeviceScan();
+				resolve(status);
+			};
+
+			console.log("=== PROCURANDO STATUS DO WI-FI ===");
+
+			bleManager.startDeviceScan(
+				null,
+				null,
+				async (error, scannedDevice) => {
+					if (error) {
+						console.log("Erro no scan do status BLE:", error);
+						finish(null);
+						return;
+					}
+
+					if (!scannedDevice) {
+						return;
+					}
+
+					if (
+						scannedDevice.name !== STATUS_DEVICE_NAME &&
+						scannedDevice.localName !== STATUS_DEVICE_NAME
+					) {
+						return;
+					}
+
+					console.log(
+						"BLE de status encontrado:",
+						scannedDevice.name,
+						scannedDevice.localName,
+						scannedDevice.id,
+					);
+
+					bleManager.stopDeviceScan();
+
+					try {
+						const connectedDevice = await scannedDevice.connect();
+
+						console.log("BLE de status conectado.");
+
+						await connectedDevice.discoverAllServicesAndCharacteristics();
+
+						console.log("Serviços do BLE de status descobertos.");
+
+						const characteristic =
+							await connectedDevice.readCharacteristicForService(
+								STATUS_SERVICE_UUID,
+								STATUS_CHARACTERISTIC_UUID,
+							);
+
+						console.log(
+							"Status recebido em Base64:",
+							characteristic.value,
+						);
+
+						if (!characteristic.value) {
+							throw new Error(
+								"Característica de status não retornou nenhum valor.",
+							);
+						}
+
+						const status = base64ToText(characteristic.value);
+
+						console.log("Status do Wi-Fi:", status);
+
+						await connectedDevice.cancelConnection();
+
+						finish(status);
+					} catch (error) {
+						console.log("Erro ao ler status do Wi-Fi:", error);
+
+						try {
+							await scannedDevice.cancelConnection();
+						} catch {}
+
+						finish(null);
+					}
+				},
+			);
+
+			setTimeout(() => {
+				finish(null);
+			}, 30000);
+		});
 	};
 
 	const connectAndProvision = async () => {
@@ -419,7 +527,24 @@ export default function WifiConfigScreen() {
 
 			console.log("Configuração Wi-Fi enviada com sucesso.");
 
+			const wifiStatus = await waitForWifiStatus();
+
+			console.log("Resultado do status Wi-Fi:", wifiStatus);
+
+			const [status, firebaseUid] = wifiStatus?.split("|") ?? [];
+
+			if (status !== "WIFI_CONNECTED" || !firebaseUid) {
+				throw new Error(
+					`Wi-Fi não foi confirmado. Status: ${wifiStatus ?? "nenhum"}`,
+				);
+			}
+
+			console.log("Wi-Fi confirmado pelo quadro.");
+			console.log("Firebase UID:", firebaseUid);
+
 			if (isWifiOnly) {
+				await updateDeviceAuthUid(wifiMac!, firebaseUid);
+
 				router.back();
 				return;
 			}
@@ -427,8 +552,9 @@ export default function WifiConfigScreen() {
 			router.push({
 				pathname: "/register-device",
 				params: {
-					mac: wifiMac,
+					id: wifiMac,
 					displayType,
+					firebaseUid,
 				},
 			});
 		} catch (error) {
@@ -504,7 +630,7 @@ export default function WifiConfigScreen() {
 									{device
 										? "Preencha os dados da rede Wi-Fi."
 										: scanning
-											? "Deixe o Quadro E Ink ligado e próximo ao celular."
+											? "Entre no modo configuração do Quadro E Ink e deixe próximo ao celular."
 											: "Procure por um Quadro E Ink próximo."}
 								</Text>
 							</View>
@@ -548,6 +674,8 @@ export default function WifiConfigScreen() {
 										{wifiMac}
 									</Text>
 								</View>
+
+								{startingProvisioning && <ActivityIndicator />}
 							</View>
 						)}
 

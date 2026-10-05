@@ -134,10 +134,10 @@ export async function createDevice(
 	 */
 	await setDoc(deviceRef, {
 		name: device.name,
-
 		updateIntervalMinutes: device.updateIntervalMinutes,
 
 		ownerUid: user.uid,
+		deviceAuthUid: device.deviceAuthUid,
 	});
 
 	/*
@@ -147,6 +147,17 @@ export async function createDevice(
 	await setDoc(doc(db, "devices", device.id, "config", "display"), {
 		displayType: device.displayType,
 		orientation: device.orientation,
+	});
+}
+
+export async function updateDeviceAuthUid(
+	deviceId: string,
+	deviceAuthUid: string,
+): Promise<void> {
+	const deviceRef = doc(db, "devices", deviceId);
+
+	await updateDoc(deviceRef, {
+		deviceAuthUid,
 	});
 }
 

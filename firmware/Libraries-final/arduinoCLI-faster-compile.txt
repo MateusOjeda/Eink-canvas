@@ -1,0 +1,49 @@
+C:\ArduinoCLI\arduino-cli.exe compile `
+  --verbose `
+  --fqbn "esp32:esp32:esp32s3:FlashMode=qio,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,CDCOnBoot=cdc,USBMode=hwcdc,UploadMode=default,UploadSpeed=921600" `
+  "C:\Users\mateu\Desktop\EinkCanvas\firmware\Libraries-final\Firestore"
+
+
+C:\ArduinoCLI\arduino-cli.exe upload `
+  -v `
+  -p COM3 `
+  --fqbn "esp32:esp32:esp32s3:FlashMode=qio,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,CDCOnBoot=cdc,USBMode=hwcdc,UploadMode=default,UploadSpeed=921600" `
+  "C:\Users\mateu\Desktop\EinkCanvas\firmware\Libraries-final\Firestore"
+
+
+
+C:\ArduinoCLI\arduino-cli.exe monitor -p COM3 -c baudrate=115200
+
+
+
+
+{"lastCollectionId":"QRGchQq9VaWvPDxV1aVk","currentImageId":"9R8zfDTvTmCs7uXj1ZCd","displayHistory":[{"imageId":"9R8zfDTvTmCs7uXj1ZCd","lastDisplayedAt":"2026-10-04T16:43:34Z"},{"imageId":"kaaZcwhpMbHyEnMhtd3b","lastDisplayedAt":"2026-10-04T16:38:08Z"},{"imageId":"btUJQoaaHEeMajKrcDxc","lastDisplayedAt":"2026-10-04T16:33:48Z"},{"imageId":"ESl6nIAL5zcf76gckQyo","lastDisplayedAt":"2026-10-04T16:26:05Z"}]}
+
+{"lastCollectionId":"QRGchQq9VaWvPDxV1aVk","currentImageId":"btUJQoaaHEeMajKrcDxc","displayHistory":[{"imageId":"btUJQoaaHEeMajKrcDxc","lastDisplayedAt":"2026-10-04T16:53:55Z"},{"imageId":"ESl6nIAL5zcf76gckQyo","lastDisplayedAt":"2026-10-04T16:47:31Z"},{"imageId":"9R8zfDTvTmCs7uXj1ZCd","lastDisplayedAt":"2026-10-04T16:43:34Z"},{"imageId":"kaaZcwhpMbHyEnMhtd3b","lastDisplayedAt":"2026-10-04T16:38:08Z"}]}
+
+{"lastCollectionId":"oBCdoAba3LkX3LgM5ZkV","currentImageId":"kaaZcwhpMbHyEnMhtd3b","displayHistory":[{"imageId":"kaaZcwhpMbHyEnMhtd3b","lastDisplayedAt":"2026-10-04T16:58:01Z"},{"imageId":"btUJQoaaHEeMajKrcDxc","lastDisplayedAt":"2026-10-04T16:53:55Z"},{"imageId":"ESl6nIAL5zcf76gckQyo","lastDisplayedAt":"2026-10-04T16:47:31Z"},{"imageId":"9R8zfDTvTmCs7uXj1ZCd","lastDisplayedAt":"2026-10-04T16:43:34Z"}]}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+C:\ArduinoCLI\arduino-cli.exe compile `
+  --verbose `
+  --fqbn "esp32:esp32:esp32s3:FlashMode=qio,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=disabled,CDCOnBoot=cdc,USBMode=hwcdc,UploadMode=default,UploadSpeed=921600" `
+  "C:\Users\mateu\Desktop\EinkCanvas\firmware\teste-pode-apagar"
+
+
+C:\ArduinoCLI\arduino-cli.exe upload `
+  -v `
+  -p COM3 `
+  --fqbn "esp32:esp32:esp32s3:FlashMode=qio,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=disabled,CDCOnBoot=cdc,USBMode=hwcdc,UploadMode=default,UploadSpeed=921600" `
+  "C:\Users\mateu\Desktop\EinkCanvas\firmware\teste-pode-apagar"

@@ -94,3 +94,99 @@ Total use time: 20 s
 Download result: PASS
 *************************** END ****************************
 
+Download button pressed
+*************************** START ****************************
+Chip: ESP32S3
+Download mode: uart
+Start time: 20261003-15:28
+Connect baud: 115200
+Com:COM3
+connecting...
+manufacturer_id: 0x46
+device_id: 0x4018
+fs:0x200200
+address/file: 0 C:\Users\mateu\Desktop\EinkCanvas\firmware\Original\flashtool\dl_temp\bin_tmp\downloadPanel1\usb.bin
+Wrote 4194304 bytes (197884 compressed) at 0x00000000 in 11.3 seconds (effective 2979.4 kbit/s)...
+File: C:\Users\mateu\Desktop\EinkCanvas\firmware\Original\flashtool\dl_temp\bin_tmp\downloadPanel1\usb.bin
+File  md5: 6c9da3b8388143d1899daee7f26af8cb
+Flash md5: 6c9da3b8388143d1899daee7f26af8cb
+Hash of data verified.
+
+Leaving...
+com closed
+Total use time: 21 s
+Download result: PASS
+*************************** END ****************************
+
+Download button pressed
+*************************** START ****************************
+Chip: ESP32S3
+Download mode: uart
+Start time: 20261003-15:34
+Connect baud: 115200
+Com:COM3
+connecting...
+manufacturer_id: 0x46
+device_id: 0x4018
+fs:0x200200
+address/file: 0 C:\Users\mateu\Desktop\EinkCanvas\firmware\Original\flashtool\dl_temp\bin_tmp\downloadPanel1\usb.bin
+Wrote 4194304 bytes (197884 compressed) at 0x00000000 in 10.0 seconds (effective 3370.5 kbit/s)...
+File: C:\Users\mateu\Desktop\EinkCanvas\firmware\Original\flashtool\dl_temp\bin_tmp\downloadPanel1\usb.bin
+File  md5: 6c9da3b8388143d1899daee7f26af8cb
+Flash md5: 6c9da3b8388143d1899daee7f26af8cb
+Hash of data verified.
+
+Leaving...
+com closed
+Total use time: 20 s
+Download result: PASS
+*************************** END ****************************
+
+Download button pressed
+*************************** START ****************************
+Chip: ESP32S3
+Download mode: uart
+Start time: 20261003-17:34
+Connect baud: 115200
+Com:COM3
+connecting...
+manufacturer_id: 0x46
+device_id: 0x4018
+fs:0x200200
+address/file: 0 C:\Users\mateu\Desktop\EinkCanvas\firmware\Original\flashtool\dl_temp\bin_tmp\downloadPanel1\usb.bin
+Wrote 4194304 bytes (197884 compressed) at 0x00000000 in 9.9 seconds (effective 3376.2 kbit/s)...
+File: C:\Users\mateu\Desktop\EinkCanvas\firmware\Original\flashtool\dl_temp\bin_tmp\downloadPanel1\usb.bin
+File  md5: 6c9da3b8388143d1899daee7f26af8cb
+Flash md5: 6c9da3b8388143d1899daee7f26af8cb
+Hash of data verified.
+
+Leaving...
+com closed
+Total use time: 20 s
+Download result: PASS
+*************************** END ****************************
+
+Download button pressed
+*************************** START ****************************
+Chip: ESP32S3
+Download mode: uart
+Start time: 20261003-19:50
+Connect baud: 115200
+Com:COM3
+connecting...
+manufacturer_id: 0x46
+device_id: 0x4018
+fs:0x200200
+address/file: 0 C:\Users\mateu\Desktop\EinkCanvas\firmware\Original\flashtool\dl_temp\bin_tmp\downloadPanel1\usb.bin
+Wrote 4194304 bytes (197884 compressed) at 0x00000000 in 10.6 seconds (effective 3178.2 kbit/s)...
+File: C:\Users\mateu\Desktop\EinkCanvas\firmware\Original\flashtool\dl_temp\bin_tmp\downloadPanel1\usb.bin
+File  md5: 6c9da3b8388143d1899daee7f26af8cb
+Flash md5: 6c9da3b8388143d1899daee7f26af8cb
+Hash of data verified.
+
+Leaving...
+com closed
+Total use time: 20 s
+Download result: PASS
+*************************** END ****************************
+
