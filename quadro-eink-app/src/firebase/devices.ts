@@ -21,6 +21,107 @@ type DeviceDisplayConfig = {
 	orientation: DisplayOrientation;
 };
 
+type DisplayHistoryEntry = {
+	imageId: string;
+	lastDisplayedAt: string;
+};
+
+export type DeviceState = {
+	lastCollectionId: string | null;
+	currentImageId: string | null;
+	displayHistory: DisplayHistoryEntry[];
+};
+
+export type DevicePriority = {
+	collectionId: string;
+	imageId: string;
+};
+
+export async function getDevicePriority(
+	deviceId: string,
+): Promise<DevicePriority | null> {
+	const snapshot = await getDoc(
+		doc(db, "devices", deviceId, "config", "priority"),
+	);
+
+	if (!snapshot.exists()) {
+		return null;
+	}
+
+	const data = snapshot.data();
+
+	if (
+		typeof data.collectionId !== "string" ||
+		typeof data.imageId !== "string"
+	) {
+		return null;
+	}
+
+	return {
+		collectionId: data.collectionId,
+		imageId: data.imageId,
+	};
+}
+
+export async function setDevicePriority(
+	deviceId: string,
+	collectionId: string | null,
+	imageId: string | null,
+): Promise<void> {
+	await setDoc(doc(db, "devices", deviceId, "config", "priority"), {
+		collectionId,
+		imageId,
+	});
+}
+
+export async function getDeviceState(
+	deviceId: string,
+): Promise<DeviceState | null> {
+	const snapshot = await getDoc(
+		doc(db, "devices", deviceId, "state", "current"),
+	);
+
+	if (!snapshot.exists()) {
+		return null;
+	}
+
+	const data = snapshot.data();
+
+	if (typeof data.state !== "string") {
+		return null;
+	}
+
+	try {
+		const state = JSON.parse(data.state);
+
+		return {
+			lastCollectionId:
+				typeof state.lastCollectionId === "string"
+					? state.lastCollectionId
+					: null,
+
+			currentImageId:
+				typeof state.currentImageId === "string"
+					? state.currentImageId
+					: null,
+
+			displayHistory: Array.isArray(state.displayHistory)
+				? state.displayHistory.filter(
+						(entry: unknown) =>
+							typeof entry === "object" &&
+							entry !== null &&
+							typeof (entry as DisplayHistoryEntry).imageId ===
+								"string" &&
+							typeof (entry as DisplayHistoryEntry)
+								.lastDisplayedAt === "string",
+					)
+				: [],
+		};
+	} catch {
+		return null;
+	}
+}
+
 async function getDeviceDisplayConfig(
 	deviceId: string,
 ): Promise<DeviceDisplayConfig> {

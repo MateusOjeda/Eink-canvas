@@ -394,7 +394,6 @@ bool displayImageFromSD(
   return true;
 }
 
-
 bool showCurrentPhoto(
   const String& imageId,
   const String& epaperFilePath
@@ -936,7 +935,10 @@ void waitButtonRelease(int pin)
 
 bool chooseNextPhoto(
   String& outputImageId,
-  String& outputEpaperFilePath
+  String& outputEpaperFilePath,
+  const String& priorityCollectionId,
+  const String& priorityImageId,
+  bool hasPriority
 )
 {
   outputImageId = "";
@@ -1153,6 +1155,320 @@ bool chooseNextPhoto(
     collections.size()
   );
 
+
+  // ============================================================
+  // PRIORIDADE
+  // ============================================================
+
+  if (hasPriority)
+  {
+    Serial.println(
+      "=== PROCESSANDO FOTO PRIORITARIA ==="
+    );
+
+    Serial.print(
+      "Collection ID: "
+    );
+
+    Serial.println(
+      priorityCollectionId
+    );
+
+    Serial.print(
+      "Image ID: "
+    );
+
+    Serial.println(
+      priorityImageId
+    );
+
+    // ----------------------------------------------------------
+    // PROCURAR A COLECAO DA PRIORIDADE
+    // ----------------------------------------------------------
+
+    int priorityCollectionIndex = -1;
+
+    for (
+      size_t i = 0;
+      i < collections.size();
+      i++
+    )
+    {
+      FirebaseJsonData collectionData;
+
+      if (!collections.get(
+            collectionData,
+            i
+          ))
+      {
+        continue;
+      }
+
+      FirebaseJson collection;
+
+      if (!collectionData.getJSON(
+            collection
+          ))
+      {
+        continue;
+      }
+
+      FirebaseJsonData collectionIdData;
+
+      if (!collection.get(
+            collectionIdData,
+            "id"
+          ))
+      {
+        continue;
+      }
+
+      if (
+        collectionIdData.to<String>() ==
+        priorityCollectionId
+      )
+      {
+        priorityCollectionIndex = i;
+        break;
+      }
+    }
+
+    if (priorityCollectionIndex < 0)
+    {
+      Serial.println(
+        "PRIORITY: colecao nao encontrada."
+      );
+
+      return false;
+    }
+
+    FirebaseJsonData priorityCollectionData;
+
+    if (!collections.get(
+          priorityCollectionData,
+          priorityCollectionIndex
+        ))
+    {
+      Serial.println(
+        "PRIORITY: erro ao obter colecao."
+      );
+
+      return false;
+    }
+
+    FirebaseJson priorityCollection;
+
+    if (!priorityCollectionData.getJSON(
+          priorityCollection
+        ))
+    {
+      Serial.println(
+        "PRIORITY: erro ao interpretar colecao."
+      );
+
+      return false;
+    }
+
+    // ----------------------------------------------------------
+    // VERIFICAR SE A COLECAO ESTA ATIVA
+    // ----------------------------------------------------------
+
+    FirebaseJsonData priorityCollectionActiveData;
+
+    if (!priorityCollection.get(
+          priorityCollectionActiveData,
+          "active"
+        ))
+    {
+      Serial.println(
+        "PRIORITY: campo active da colecao nao encontrado."
+      );
+
+      return false;
+    }
+
+    if (!priorityCollectionActiveData.to<bool>())
+    {
+      Serial.println(
+        "PRIORITY: colecao esta inativa."
+      );
+
+      return false;
+    }
+
+    // ----------------------------------------------------------
+    // IMAGENS
+    // ----------------------------------------------------------
+
+    FirebaseJsonData priorityImagesData;
+
+    if (!priorityCollection.get(
+          priorityImagesData,
+          "images"
+        ))
+    {
+      Serial.println(
+        "PRIORITY: images nao encontrado."
+      );
+
+      return false;
+    }
+
+    FirebaseJsonArray priorityImages;
+
+    if (!priorityImagesData.getArray(
+          priorityImages
+        ))
+    {
+      Serial.println(
+        "PRIORITY: erro ao ler images."
+      );
+
+      return false;
+    }
+
+    // ----------------------------------------------------------
+    // PROCURAR A IMAGEM
+    // ----------------------------------------------------------
+
+    for (
+      size_t i = 0;
+      i < priorityImages.size();
+      i++
+    )
+    {
+      FirebaseJsonData imageData;
+
+      if (!priorityImages.get(
+            imageData,
+            i
+          ))
+      {
+        continue;
+      }
+
+      FirebaseJson image;
+
+      if (!imageData.getJSON(image))
+      {
+        continue;
+      }
+
+      FirebaseJsonData imageIdData;
+      FirebaseJsonData activeData;
+      FirebaseJsonData widthData;
+      FirebaseJsonData heightData;
+      FirebaseJsonData epaperFilePathData;
+
+      if (!image.get(
+            imageIdData,
+            "id"
+          ))
+      {
+        continue;
+      }
+
+      if (!image.get(
+            activeData,
+            "active"
+          ))
+      {
+        continue;
+      }
+
+      if (!image.get(
+            widthData,
+            "width"
+          ))
+      {
+        continue;
+      }
+
+      if (!image.get(
+            heightData,
+            "height"
+          ))
+      {
+        continue;
+      }
+
+      if (!image.get(
+            epaperFilePathData,
+            "epaperFilePath"
+          ))
+      {
+        continue;
+      }
+
+      String imageId =
+        imageIdData.to<String>();
+
+      if (imageId != priorityImageId)
+      {
+        continue;
+      }
+
+      if (!activeData.to<bool>())
+      {
+        Serial.println(
+          "PRIORITY: imagem esta inativa."
+        );
+
+        return false;
+      }
+
+      if (
+        widthData.to<int>() != requiredWidth ||
+        heightData.to<int>() != requiredHeight
+      )
+      {
+        Serial.println(
+          "PRIORITY: imagem possui dimensao incompatível."
+        );
+
+        return false;
+      }
+
+      outputImageId =
+        imageId;
+
+      outputEpaperFilePath =
+        epaperFilePathData.to<String>();
+
+      stateJson.set(
+        "lastCollectionId",
+        priorityCollectionId
+      );
+
+      Serial.println(
+        "=== FOTO PRIORITARIA ESCOLHIDA ==="
+      );
+
+      Serial.print(
+        "Image ID: "
+      );
+
+      Serial.println(
+        outputImageId
+      );
+
+      Serial.print(
+        "Epaper file path: "
+      );
+
+      Serial.println(
+        outputEpaperFilePath
+      );
+
+      return true;
+    }
+
+    Serial.println(
+      "PRIORITY: imagem nao encontrada."
+    );
+
+    return false;
+  }
 
   // ============================================================
   // ESTADO ATUAL
@@ -1999,6 +2315,24 @@ void sync()
   );
 
 
+  String priorityCollectionId;
+  String priorityImageId;
+  bool hasPriority = false;
+
+  if (!firebase.readDevicePriority(
+        deviceId.c_str(),
+        priorityCollectionId,
+        priorityImageId,
+        hasPriority
+      ))
+  {
+    Serial.println(
+      "ERRO: nao foi possivel ler prioridade."
+    );
+
+    return;
+  }
+
   // ============================================================
   // ESCOLHER FOTO
   // ============================================================
@@ -2008,7 +2342,10 @@ void sync()
 
   if (!chooseNextPhoto(
         imageId,
-        epaperFilePath
+        epaperFilePath,
+        priorityCollectionId,
+        priorityImageId,
+        hasPriority
       ))
   {
     Serial.println(
@@ -2033,6 +2370,40 @@ void sync()
     );
 
     return;
+  }
+
+
+  // ============================================================
+  // CONSUMIR PRIORIDADE
+  // ============================================================
+
+  if (
+    hasPriority &&
+    imageId == priorityImageId
+  )
+  {
+    Serial.println(
+      "PRIORITY: foto prioritaria exibida."
+    );
+
+    Serial.println(
+      "PRIORITY: removendo prioridade."
+    );
+
+    if (!firebase.clearDevicePriority(
+          deviceId.c_str()
+        ))
+    {
+      Serial.println(
+        "ERRO: nao foi possivel remover prioridade."
+      );
+
+      return;
+    }
+
+    Serial.println(
+      "PRIORITY: prioridade removida."
+    );
   }
 
 

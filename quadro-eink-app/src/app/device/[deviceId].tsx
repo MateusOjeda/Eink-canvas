@@ -258,6 +258,38 @@ export default function DeviceScreen() {
 					</Card>
 				</Pressable>
 
+				<Pressable
+					onPress={() =>
+						router.push({
+							pathname: "/device/[deviceId]/history",
+							params: {
+								deviceId,
+							},
+						})
+					}
+					style={({ pressed }) => [pressed && styles.pressed]}
+				>
+					<Card style={styles.historyCard}>
+						<View style={styles.historyIcon}>
+							<MaterialCommunityIcons
+								name="history"
+								size={27}
+								color={colors.textSecondary}
+							/>
+						</View>
+
+						<View style={styles.navigationText}>
+							<Text style={styles.navigationTitle}>
+								Histórico
+							</Text>
+
+							<Text style={styles.navigationSubtitle}>
+								Veja as fotos exibidas neste quadro
+							</Text>
+						</View>
+					</Card>
+				</Pressable>
+
 				<View style={styles.collectionsHeader}>
 					<Text style={styles.sectionTitle}>Coleções</Text>
 
@@ -527,5 +559,26 @@ const styles = StyleSheet.create({
 
 	addButton: {
 		marginTop: spacing.xl,
+	},
+
+	historyCard: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.md,
+		marginTop: spacing.md,
+	},
+
+	historyIcon: {
+		width: 44,
+		height: 44,
+		borderRadius: radius.md,
+		backgroundColor: colors.surfaceMuted,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	navigationText: {
+		flex: 1,
+		minWidth: 0,
 	},
 });

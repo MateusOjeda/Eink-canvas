@@ -899,6 +899,193 @@ static void firebaseDownloadCallback(
   }
 }
 
+bool FirebaseManager::readDevicePriority(
+  const char* deviceId,
+  String& collectionId,
+  String& imageId,
+  bool& hasPriority
+)
+{
+  collectionId = "";
+  imageId = "";
+  hasPriority = false;
+
+  String priorityPath =
+    "devices/" + String(deviceId) +
+    "/config/priority";
+
+  _serial->println();
+  _serial->println("PRIORITY: lendo configuracao...");
+
+  if (!Firebase.Firestore.getDocument(
+        &_fbdo,
+        "einkcanvas",
+        "",
+        priorityPath.c_str(),
+        ""
+      ))
+  {
+    String error = _fbdo.errorReason();
+
+    _serial->println(
+      "PRIORITY: erro na leitura:"
+    );
+
+    _serial->println(error);
+
+    // O documento pode simplesmente ainda não existir.
+    // Nesse caso, não há prioridade.
+    if (
+      error.indexOf("NOT_FOUND") >= 0 ||
+      error.indexOf("not found") >= 0
+    )
+    {
+      _serial->println(
+        "PRIORITY: documento nao existe. Nenhuma prioridade."
+      );
+
+      return true;
+    }
+
+    return false;
+  }
+
+  _serial->println(
+    "PRIORITY: documento lido."
+  );
+
+  FirebaseJson priorityJson;
+
+  if (!priorityJson.setJsonData(
+        _fbdo.payload()
+      ))
+  {
+    _serial->println(
+      "PRIORITY: JSON invalido."
+    );
+
+    return false;
+  }
+
+  FirebaseJsonData fieldsData;
+
+  if (!priorityJson.get(
+        fieldsData,
+        "fields"
+      ))
+  {
+    _serial->println(
+      "PRIORITY: fields nao encontrado."
+    );
+
+    return false;
+  }
+
+  FirebaseJson fields;
+
+  if (!fieldsData.getJSON(fields))
+  {
+    _serial->println(
+      "PRIORITY: erro ao ler fields."
+    );
+
+    return false;
+  }
+
+  FirebaseJsonData collectionIdData;
+  FirebaseJsonData imageIdData;
+
+  fields.get(
+    collectionIdData,
+    "collectionId/stringValue"
+  );
+
+  fields.get(
+    imageIdData,
+    "imageId/stringValue"
+  );
+
+  collectionId =
+    collectionIdData.to<String>();
+
+  imageId =
+    imageIdData.to<String>();
+
+  if (
+    collectionId.length() == 0 ||
+    imageId.length() == 0
+  )
+  {
+    _serial->println(
+      "PRIORITY: prioridade vazia."
+    );
+
+    return true;
+  }
+
+  hasPriority = true;
+
+  _serial->println(
+    "=== PRIORIDADE ==="
+  );
+
+  _serial->print(
+    "Collection ID: "
+  );
+
+  _serial->println(
+    collectionId
+  );
+
+  _serial->print(
+    "Image ID: "
+  );
+
+  _serial->println(
+    imageId
+  );
+
+  return true;
+}
+
+bool FirebaseManager::clearDevicePriority(
+  const char* deviceId
+)
+{
+  String priorityPath =
+    "devices/" + String(deviceId) +
+    "/config/priority";
+
+  _serial->println(
+    "PRIORITY: removendo documento..."
+  );
+
+  if (Firebase.Firestore.deleteDocument(
+        &_fbdo,
+        "einkcanvas",
+        "",
+        priorityPath.c_str(),
+        ""
+      ))
+  {
+    _serial->println(
+      "PRIORITY: documento removido."
+    );
+
+    return true;
+  }
+
+  _serial->println(
+    "PRIORITY: erro ao remover:"
+  );
+
+  _serial->println(
+    _fbdo.errorReason()
+  );
+
+  return false;
+}
+
 bool FirebaseManager::downloadImage(
   const char* remotePath,
   const char* localPath

@@ -49,6 +49,17 @@ public:
     String& output
   );
 
+  bool readDevicePriority(
+    const char* deviceId,
+    String& collectionId,
+    String& imageId,
+    bool& hasPriority
+  );
+
+  bool clearDevicePriority(
+    const char* deviceId
+  );
+
 private:
   FirebaseConfig _config;
   FirebaseAuth _auth;

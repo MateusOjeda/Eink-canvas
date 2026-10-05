@@ -28,11 +28,12 @@ import { colors, radius, spacing, typography } from "@/theme";
 import { getPhotoCollection } from "@/firebase/collections";
 import { getPhotos } from "@/firebase/photos";
 import { getCachedStorageFileUri } from "@/firebase/storage";
-import { getDevice } from "@/firebase/devices";
+import { getDevice, getDeviceState } from "@/firebase/devices";
 
 import type { PhotoCollection } from "@/types/photo-collection";
 import type { Photo } from "@/types/photo";
 import type { Device } from "@/types/device";
+import type { DeviceState } from "@/firebase/devices";
 
 type PhotoWithThumbnail = {
 	photo: Photo;
@@ -43,6 +44,24 @@ function getPhotoCountLabel(count: number) {
 	return `${count} ${count === 1 ? "foto" : "fotos"}`;
 }
 
+function formatLastDisplayedAt(value: string) {
+	const date = new Date(value);
+
+	if (Number.isNaN(date.getTime())) {
+		return null;
+	}
+
+	return new Intl.DateTimeFormat("pt-BR", {
+		day: "2-digit",
+		month: "2-digit",
+		year: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+	})
+		.format(date)
+		.replace(",", " ·");
+}
+
 export default function CollectionScreen() {
 	const { deviceId, collectionId } = useLocalSearchParams<{
 		deviceId: string;
@@ -50,6 +69,8 @@ export default function CollectionScreen() {
 	}>();
 
 	const [device, setDevice] = useState<Device | null>(null);
+
+	const [deviceState, setDeviceState] = useState<DeviceState | null>(null);
 
 	const [photoCollection, setPhotoCollection] =
 		useState<PhotoCollection | null>(null);
@@ -66,36 +87,31 @@ export default function CollectionScreen() {
 
 					const [
 						loadedDevice,
+						loadedDeviceState,
 						loadedCollection,
 						loadedPhotos,
 					] = await Promise.all([
 						getDevice(deviceId),
-						getPhotoCollection(
-							deviceId,
-							collectionId,
-						),
+						getDeviceState(deviceId),
+						getPhotoCollection(deviceId, collectionId),
 						getPhotos(deviceId, collectionId),
 					]);
 
-					const loadedPhotosWithThumbnails =
-						await Promise.all(
-							loadedPhotos.map(async (photo) => ({
-								photo,
-								thumbnailUri:
-									await getCachedStorageFileUri(
-										photo.thumbnailPath,
-									),
-							})),
-						);
+					const loadedPhotosWithThumbnails = await Promise.all(
+						loadedPhotos.map(async (photo) => ({
+							photo,
+							thumbnailUri: await getCachedStorageFileUri(
+								photo.thumbnailPath,
+							),
+						})),
+					);
 
 					setDevice(loadedDevice);
+					setDeviceState(loadedDeviceState);
 					setPhotoCollection(loadedCollection);
 					setPhotos(loadedPhotosWithThumbnails);
 				} catch (error) {
-					console.error(
-						"Erro ao carregar coleção:",
-						error,
-					);
+					console.error("Erro ao carregar coleção:", error);
 				} finally {
 					setLoading(false);
 				}
@@ -133,15 +149,10 @@ export default function CollectionScreen() {
 	if (loading) {
 		return (
 			<>
-				<Stack.Screen
-					options={{ headerShown: false }}
-				/>
+				<Stack.Screen options={{ headerShown: false }} />
 
 				<View style={styles.loading}>
-					<ActivityIndicator
-						size="large"
-						color={colors.primary}
-					/>
+					<ActivityIndicator size="large" color={colors.primary} />
 				</View>
 			</>
 		);
@@ -151,11 +162,7 @@ export default function CollectionScreen() {
 		<>
 			<Stack.Screen options={{ headerShown: false }} />
 
-			<Screen
-				contentContainerStyle={
-					styles.screenContent
-				}
-			>
+			<Screen contentContainerStyle={styles.screenContent}>
 				<ScreenHeader
 					title={photoCollection?.name ?? "Coleção"}
 					subtitle={
@@ -163,9 +170,7 @@ export default function CollectionScreen() {
 							? `${device.name} · ${getPhotoCountLabel(
 									photos.length,
 								)}`
-							: getPhotoCountLabel(
-									photos.length,
-								)
+							: getPhotoCountLabel(photos.length)
 					}
 					showBackButton
 				/>
@@ -175,11 +180,7 @@ export default function CollectionScreen() {
 					onPress={handleAddPhoto}
 					style={styles.addButton}
 					leftIcon={
-						<Ionicons
-							name="add"
-							size={28}
-							color={colors.white}
-						/>
+						<Ionicons name="add" size={28} color={colors.white} />
 					}
 				/>
 
@@ -190,13 +191,10 @@ export default function CollectionScreen() {
 					style={styles.photoList}
 					contentContainerStyle={[
 						styles.photoListContent,
-						photos.length === 0 &&
-							styles.emptyListContent,
+						photos.length === 0 && styles.emptyListContent,
 					]}
 					columnWrapperStyle={
-						photos.length > 1
-							? styles.photoRow
-							: undefined
+						photos.length > 1 ? styles.photoRow : undefined
 					}
 					showsVerticalScrollIndicator={false}
 					ListEmptyComponent={
@@ -206,8 +204,8 @@ export default function CollectionScreen() {
 							</Text>
 
 							<Text style={styles.emptyText}>
-								Adicione a primeira foto para
-								começar a preencher este quadro.
+								Adicione a primeira foto para começar a
+								preencher este quadro.
 							</Text>
 						</View>
 					}
@@ -221,60 +219,54 @@ export default function CollectionScreen() {
 
 						const orientationMismatch =
 							device !== null &&
-							photoOrientation !==
-								device.orientation;
+							photoOrientation !== device.orientation;
+
+						const lastDisplayedAt =
+							deviceState?.displayHistory.find(
+								(entry) => entry.imageId === photo.id,
+							)?.lastDisplayedAt;
+
+						const lastDisplayedLabel = lastDisplayedAt
+							? formatLastDisplayedAt(lastDisplayedAt)
+							: null;
 
 						return (
 							<Pressable
 								style={({ pressed }) => [
 									styles.photoContainer,
-									pressed &&
-										styles.photoPressed,
+									pressed && styles.photoPressed,
 								]}
-								onPress={() =>
-									handleOpenPhoto(
-										photo.id,
-									)
-								}
+								onPress={() => handleOpenPhoto(photo.id)}
 							>
-								<Image
-									source={{
-										uri: thumbnailUri,
-									}}
-									style={styles.thumbnail}
-									resizeMode="cover"
-								/>
+								<View style={styles.thumbnailContainer}>
+									<Image
+										source={{
+											uri: thumbnailUri,
+										}}
+										style={styles.thumbnail}
+										resizeMode="cover"
+									/>
 
-								{!photo.active ? (
-									<View
-										style={
-											styles.inactiveOverlay
-										}
-									>
-										<Text
-											style={
-												styles.inactiveText
-											}
-										>
-											Desativada
-										</Text>
-									</View>
-								) : orientationMismatch ? (
-									<View
-										style={
-											styles.inactiveOverlay
-										}
-									>
-										<Text
-											style={
-												styles.inactiveText
-											}
-										>
-											Orientação
-											incompatível
-										</Text>
-									</View>
-								) : null}
+									{!photo.active ? (
+										<View style={styles.inactiveOverlay}>
+											<Text style={styles.inactiveText}>
+												Desativada
+											</Text>
+										</View>
+									) : orientationMismatch ? (
+										<View style={styles.inactiveOverlay}>
+											<Text style={styles.inactiveText}>
+												Orientação incompatível
+											</Text>
+										</View>
+									) : null}
+								</View>
+
+								{lastDisplayedLabel && (
+									<Text style={styles.lastDisplayedText}>
+										{lastDisplayedLabel}
+									</Text>
+								)}
 							</Pressable>
 						);
 					}}
@@ -315,8 +307,12 @@ const styles = StyleSheet.create({
 	photoContainer: {
 		flex: 1,
 		maxWidth: "48%",
-		aspectRatio: 1,
 		marginBottom: spacing.md,
+	},
+
+	thumbnailContainer: {
+		width: "100%",
+		aspectRatio: 1,
 		borderRadius: radius.lg,
 		overflow: "hidden",
 		backgroundColor: colors.surfaceMuted,
@@ -329,6 +325,13 @@ const styles = StyleSheet.create({
 	thumbnail: {
 		width: "100%",
 		height: "100%",
+	},
+
+	lastDisplayedText: {
+		marginTop: spacing.xs,
+		...typography.caption,
+		color: colors.textSecondary,
+		textAlign: "center",
 	},
 
 	emptyListContent: {

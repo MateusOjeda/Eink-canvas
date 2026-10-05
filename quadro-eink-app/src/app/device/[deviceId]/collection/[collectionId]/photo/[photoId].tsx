@@ -28,7 +28,11 @@ import { colors, radius, spacing, typography } from "@/theme";
 import { deletePhoto, getPhoto, setPhotoActive } from "@/firebase/photos";
 
 import { getCachedStorageFileUri } from "@/firebase/storage";
-import { getDevice } from "@/firebase/devices";
+import {
+	getDevice,
+	getDevicePriority,
+	setDevicePriority,
+} from "@/firebase/devices";
 import { getPhotoCollection } from "@/firebase/collections";
 
 import type { Photo } from "@/types/photo";
@@ -53,6 +57,13 @@ export default function PhotoScreen() {
 
 	const [updatingActive, setUpdatingActive] = useState(false);
 
+	const [priority, setPriority] = useState<{
+		collectionId: string;
+		imageId: string;
+	} | null>(null);
+
+	const [updatingPriority, setUpdatingPriority] = useState(false);
+
 	const [deleting, setDeleting] = useState(false);
 
 	const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -63,12 +74,17 @@ export default function PhotoScreen() {
 				try {
 					setLoading(true);
 
-					const [loadedPhoto, loadedDevice, loadedCollection] =
-						await Promise.all([
-							getPhoto(deviceId, collectionId, photoId),
-							getDevice(deviceId),
-							getPhotoCollection(deviceId, collectionId),
-						]);
+					const [
+						loadedPhoto,
+						loadedDevice,
+						loadedCollection,
+						loadedPriority,
+					] = await Promise.all([
+						getPhoto(deviceId, collectionId, photoId),
+						getDevice(deviceId),
+						getPhotoCollection(deviceId, collectionId),
+						getDevicePriority(deviceId),
+					]);
 
 					if (!loadedPhoto) {
 						Alert.alert("Foto não encontrada");
@@ -92,6 +108,7 @@ export default function PhotoScreen() {
 					setDevice(loadedDevice);
 					setPhotoCollection(loadedCollection);
 					setPreviewUri(loadedPreviewUri);
+					setPriority(loadedPriority);
 				} catch (error) {
 					console.error("Erro ao carregar foto:", error);
 
@@ -125,6 +142,41 @@ export default function PhotoScreen() {
 			Alert.alert("Erro", "Não foi possível alterar a foto.");
 		} finally {
 			setUpdatingActive(false);
+		}
+	};
+
+	const handlePriorityChange = async () => {
+		if (!photo || updatingPriority) {
+			return;
+		}
+
+		try {
+			setUpdatingPriority(true);
+
+			const isPriority =
+				priority?.imageId === photo.id &&
+				priority?.collectionId === collectionId;
+
+			if (isPriority) {
+				await setDevicePriority(deviceId, null, null);
+				setPriority(null);
+			} else {
+				await setDevicePriority(deviceId, collectionId, photo.id);
+
+				setPriority({
+					collectionId,
+					imageId: photo.id,
+				});
+			}
+		} catch (error) {
+			console.error("Erro ao alterar prioridade da foto:", error);
+
+			Alert.alert(
+				"Erro",
+				"Não foi possível alterar a prioridade da foto.",
+			);
+		} finally {
+			setUpdatingPriority(false);
 		}
 	};
 
@@ -273,6 +325,43 @@ export default function PhotoScreen() {
 						onValueChange={handleActiveChange}
 					/>
 				</View>
+
+				<Pressable
+					disabled={updatingPriority}
+					onPress={handlePriorityChange}
+					style={({ pressed }) => [
+						styles.priorityButton,
+						pressed && !updatingPriority && styles.pressed,
+						updatingPriority && styles.priorityButtonDisabled,
+					]}
+				>
+					{updatingPriority ? (
+						<ActivityIndicator
+							size="small"
+							color={colors.primary}
+						/>
+					) : (
+						<>
+							<Ionicons
+								name={
+									priority?.imageId === photo.id &&
+									priority?.collectionId === collectionId
+										? "star"
+										: "star-outline"
+								}
+								size={21}
+								color={colors.primary}
+							/>
+
+							<Text style={styles.priorityButtonText}>
+								{priority?.imageId === photo.id &&
+								priority?.collectionId === collectionId
+									? "Foto prioritária"
+									: "Definir como prioridade"}
+							</Text>
+						</>
+					)}
+				</Pressable>
 
 				<Text style={styles.sectionTitle}>Descrição</Text>
 
@@ -430,5 +519,28 @@ const styles = StyleSheet.create({
 	deleteButtonText: {
 		...typography.button,
 		color: colors.danger,
+	},
+
+	priorityButton: {
+		minHeight: 52,
+		marginTop: spacing.md,
+		paddingHorizontal: spacing.lg,
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: radius.lg,
+		backgroundColor: colors.surface,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: spacing.sm,
+	},
+
+	priorityButtonDisabled: {
+		opacity: 0.5,
+	},
+
+	priorityButtonText: {
+		...typography.button,
+		color: colors.primary,
 	},
 });
