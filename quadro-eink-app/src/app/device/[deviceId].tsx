@@ -28,7 +28,10 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 
 import { colors, radius, spacing, typography } from "@/theme";
 
-import { getDevice } from "@/firebase/devices";
+import {
+	getDevice,
+	subscribeToDeviceProcessingStatus,
+} from "@/firebase/devices";
 import { getCollections, setCollectionActive } from "@/firebase/collections";
 import { getPhotos } from "@/firebase/photos";
 import { getCachedStorageFileUri } from "@/firebase/storage";
@@ -60,6 +63,7 @@ export default function DeviceScreen() {
 	const [device, setDevice] = useState<Device | null>(null);
 	const [collections, setCollections] = useState<CollectionListItem[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [deviceProcessing, setDeviceProcessing] = useState(false);
 
 	const load = useCallback(async () => {
 		try {
@@ -116,6 +120,14 @@ export default function DeviceScreen() {
 		useCallback(() => {
 			load();
 		}, [load]),
+	);
+
+	useFocusEffect(
+		useCallback(() => {
+			return subscribeToDeviceProcessingStatus(deviceId, (processing) => {
+				setDeviceProcessing(processing);
+			});
+		}, [deviceId]),
 	);
 
 	const handleOpenCollection = (collectionId: string) => {
@@ -224,6 +236,7 @@ export default function DeviceScreen() {
 						device.displayType,
 					)} · Intervalo: ${device.updateIntervalMinutes} min`}
 					showBackButton
+					processing={deviceProcessing}
 				/>
 
 				<Pressable

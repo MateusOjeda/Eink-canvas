@@ -1,6 +1,9 @@
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
 import {
+	Animated,
+	Easing,
 	Pressable,
 	StyleSheet,
 	Text,
@@ -21,6 +24,7 @@ type ScreenHeaderProps = {
 	showBackButton?: boolean;
 	onBackPress?: () => void;
 	rightAction?: ReactNode;
+	processing?: boolean;
 	style?: StyleProp<ViewStyle>;
 };
 
@@ -30,8 +34,39 @@ export function ScreenHeader({
 	showBackButton = false,
 	onBackPress,
 	rightAction,
+	processing = false,
 	style,
 }: ScreenHeaderProps) {
+	const rotation = useRef(new Animated.Value(0)).current;
+
+	useEffect(() => {
+		if (!processing) {
+			rotation.stopAnimation();
+			rotation.setValue(0);
+			return;
+		}
+
+		const animation = Animated.loop(
+			Animated.timing(rotation, {
+				toValue: 1,
+				duration: 900,
+				easing: Easing.linear,
+				useNativeDriver: true,
+			}),
+		);
+
+		animation.start();
+
+		return () => {
+			animation.stop();
+		};
+	}, [processing, rotation]);
+
+	const spinnerRotation = rotation.interpolate({
+		inputRange: [0, 1],
+		outputRange: ["0deg", "360deg"],
+	});
+
 	const handleBackPress = () => {
 		if (onBackPress) {
 			onBackPress();
@@ -76,6 +111,23 @@ export function ScreenHeader({
 						<Text style={styles.subtitle}>{subtitle}</Text>
 					) : null}
 				</View>
+
+				{processing ? (
+					<Animated.View
+						style={[
+							styles.processingIndicator,
+							{
+								transform: [{ rotate: spinnerRotation }],
+							},
+						]}
+					>
+						<Ionicons
+							name="sync"
+							size={22}
+							color={colors.textSecondary}
+						/>
+					</Animated.View>
+				) : null}
 
 				{!showBackButton && rightAction ? (
 					<View style={styles.titleRightAction}>{rightAction}</View>
@@ -125,6 +177,7 @@ const styles = StyleSheet.create({
 
 	titleBlock: {
 		flex: 1,
+		minWidth: 0,
 	},
 
 	title: {
@@ -136,6 +189,11 @@ const styles = StyleSheet.create({
 		marginTop: spacing.xs,
 		...typography.body,
 		color: colors.textSecondary,
+	},
+
+	processingIndicator: {
+		alignItems: "center",
+		justifyContent: "center",
 	},
 
 	titleRightAction: {

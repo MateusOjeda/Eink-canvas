@@ -4,6 +4,7 @@ import {
 	doc,
 	getDoc,
 	getDocs,
+	onSnapshot,
 	query,
 	setDoc,
 	updateDoc,
@@ -306,4 +307,34 @@ export async function deleteDevice(deviceId: string): Promise<void> {
 	await deleteDoc(doc(db, "devices", deviceId, "config", "display"));
 
 	await deleteDoc(doc(db, "devices", deviceId));
+}
+
+export function subscribeToDeviceProcessingStatus(
+	deviceId: string,
+	callback: (processing: boolean) => void,
+): () => void {
+	return onSnapshot(
+		doc(db, "devices", deviceId, "state", "current"),
+		(snapshot) => {
+			if (!snapshot.exists()) {
+				console.log("[DeviceProcessing] Documento não existe.");
+
+				callback(false);
+				return;
+			}
+
+			const data = snapshot.data();
+
+			const status = data.processing?.status;
+
+			const processing = status === "thinking";
+
+			callback(processing);
+		},
+		(error) => {
+			console.error("[DeviceProcessing] Erro no listener:", error);
+
+			callback(false);
+		},
+	);
 }
