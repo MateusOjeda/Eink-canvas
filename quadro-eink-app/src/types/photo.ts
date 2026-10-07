@@ -31,6 +31,8 @@ type TemporaryPhotoBase = {
 
 	width: number;
 	height: number;
+
+	consumedAt?: unknown;
 };
 
 export type TemporaryPhoto =

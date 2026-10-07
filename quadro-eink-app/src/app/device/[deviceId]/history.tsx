@@ -20,18 +20,21 @@ import { colors, radius, spacing, typography } from "@/theme";
 
 import { getDevice, getDeviceState } from "@/firebase/devices";
 import { getCollections } from "@/firebase/collections";
-import { getPhotos } from "@/firebase/photos";
+import { getPhotos, getTemporaryPhotos } from "@/firebase/photos";
 import { getCachedStorageFileUri } from "@/firebase/storage";
 
 import type { Device } from "@/types/device";
-import type { Photo } from "@/types/photo";
+import type { Photo, TemporaryPhoto } from "@/types/photo";
 import type { PhotoCollection } from "@/types/photo-collection";
 
 type HistoryItem = {
 	imageId: string;
 	lastDisplayedAt: string;
 	photo: Photo | null;
+	temporaryPhoto: TemporaryPhoto | null;
+	isTemporary: boolean;
 	thumbnailUri: string | null;
+	collectionName: string | null;
 };
 
 function formatDisplayedAt(value: string) {
@@ -86,11 +89,13 @@ export default function HistoryScreen() {
 		try {
 			setLoading(true);
 
-			const [loadedDevice, state, collections] = await Promise.all([
-				getDevice(deviceId),
-				getDeviceState(deviceId),
-				getCollections(deviceId),
-			]);
+			const [loadedDevice, state, collections, temporaryPhotos] =
+				await Promise.all([
+					getDevice(deviceId),
+					getDeviceState(deviceId),
+					getCollections(deviceId),
+					getTemporaryPhotos(deviceId),
+				]);
 
 			setDevice(loadedDevice);
 
@@ -100,6 +105,7 @@ export default function HistoryScreen() {
 			}
 
 			const photosById = new Map<string, Photo>();
+			const collectionNameByPhotoId = new Map<string, string>();
 
 			await Promise.all(
 				collections.map(async (photoCollection: PhotoCollection) => {
@@ -110,21 +116,40 @@ export default function HistoryScreen() {
 
 					for (const photo of photos) {
 						photosById.set(photo.id, photo);
+						collectionNameByPhotoId.set(
+							photo.id,
+							photoCollection.name,
+						);
 					}
 				}),
+			);
+
+			const temporaryPhotosById = new Map(
+				temporaryPhotos.map((photo) => [photo.id, photo]),
 			);
 
 			const historyItems = await Promise.all(
 				state.displayHistory.map(async (entry) => {
 					const photo = photosById.get(entry.imageId) ?? null;
+					const collectionName =
+						photo !== null
+							? (collectionNameByPhotoId.get(photo.id) ?? null)
+							: null;
+
+					const temporaryPhoto =
+						temporaryPhotosById.get(entry.imageId) ?? null;
 
 					let thumbnailUri: string | null = null;
 
-					if (photo?.thumbnailPath) {
+					const thumbnailPath =
+						photo?.thumbnailPath ??
+						temporaryPhoto?.previewPath ??
+						null;
+
+					if (thumbnailPath) {
 						try {
-							thumbnailUri = await getCachedStorageFileUri(
-								photo.thumbnailPath,
-							);
+							thumbnailUri =
+								await getCachedStorageFileUri(thumbnailPath);
 						} catch (error) {
 							console.error(
 								"Erro ao carregar miniatura do histórico:",
@@ -137,7 +162,10 @@ export default function HistoryScreen() {
 						imageId: entry.imageId,
 						lastDisplayedAt: entry.lastDisplayedAt,
 						photo,
+						temporaryPhoto,
+						isTemporary: temporaryPhoto !== null,
 						thumbnailUri,
+						collectionName,
 					};
 				}),
 			);
@@ -174,7 +202,7 @@ export default function HistoryScreen() {
 			<>
 				<Stack.Screen options={{ headerShown: false }} />
 
-				<Screen>
+				<Screen refreshing={loading} onRefresh={load}>
 					<ScreenHeader
 						title="Histórico"
 						subtitle="Não foi possível carregar este dispositivo."
@@ -189,7 +217,7 @@ export default function HistoryScreen() {
 		<>
 			<Stack.Screen options={{ headerShown: false }} />
 
-			<Screen scroll>
+			<Screen scroll refreshing={loading} onRefresh={load}>
 				<ScreenHeader
 					title="Histórico"
 					subtitle={device.name}
@@ -244,7 +272,14 @@ export default function HistoryScreen() {
 										style={styles.photoTitle}
 										numberOfLines={2}
 									>
-										{item.photo?.description || "Foto"}
+										{item.isTemporary
+											? item.temporaryPhoto
+													?.recurrence === "yearly"
+												? "Foto anual"
+												: "Foto temporária"
+											: item.photo?.description ||
+												item.collectionName ||
+												"Foto"}
 									</Text>
 
 									<Text style={styles.displayedAt}>

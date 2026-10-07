@@ -77,6 +77,8 @@ export async function getTemporaryPhotos(
 
 			width: data.width,
 			height: data.height,
+
+			consumedAt: data.consumedAt,
 		};
 
 		if (data.recurrence === "once") {

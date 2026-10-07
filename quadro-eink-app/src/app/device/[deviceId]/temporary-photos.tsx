@@ -70,6 +70,39 @@ function formatYearlyDate(date: { month: number; day: number }) {
 	});
 }
 
+function formatConsumedAt(value: unknown) {
+	let date: Date | null = null;
+
+	if (value instanceof Date) {
+		date = value;
+	} else if (
+		typeof value === "object" &&
+		value !== null &&
+		"toDate" in value &&
+		typeof value.toDate === "function"
+	) {
+		date = value.toDate();
+	} else if (typeof value === "string" || typeof value === "number") {
+		const parsed = new Date(value);
+
+		if (!Number.isNaN(parsed.getTime())) {
+			date = parsed;
+		}
+	}
+
+	if (!date) {
+		return null;
+	}
+
+	return new Intl.DateTimeFormat("pt-BR", {
+		day: "2-digit",
+		month: "2-digit",
+		year: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+	}).format(date);
+}
+
 function getPhotoOrientation(photo: TemporaryPhoto): DisplayOrientation {
 	return photo.width > photo.height ? "landscape" : "portrait";
 }
@@ -197,7 +230,7 @@ export default function TemporaryPhotosScreen() {
 		<>
 			<Stack.Screen options={{ headerShown: false }} />
 
-			<Screen scroll>
+			<Screen scroll refreshing={loading} onRefresh={loadPhotos}>
 				<ScreenHeader
 					title="Fotos agendadas"
 					subtitle={deviceName}
@@ -231,6 +264,14 @@ export default function TemporaryPhotosScreen() {
 								deviceOrientation !== null &&
 								getPhotoOrientation(photo) !==
 									deviceOrientation;
+
+							const isConsumed =
+								photo.recurrence === "once" &&
+								photo.consumedAt != null;
+
+							const consumedAt = isConsumed
+								? formatConsumedAt(photo.consumedAt)
+								: null;
 
 							const isDeleting = deletingId === photo.id;
 
@@ -280,6 +321,30 @@ export default function TemporaryPhotosScreen() {
 												</View>
 											</View>
 										) : null}
+
+										{isConsumed ? (
+											<View
+												style={styles.consumedOverlay}
+											>
+												<View
+													style={styles.consumedLabel}
+												>
+													<Ionicons
+														name="checkmark-circle"
+														size={24}
+														color={colors.white}
+													/>
+
+													<Text
+														style={
+															styles.consumedText
+														}
+													>
+														Já exibida
+													</Text>
+												</View>
+											</View>
+										) : null}
 									</View>
 
 									<View style={styles.photoInfo}>
@@ -319,13 +384,23 @@ export default function TemporaryPhotosScreen() {
 											style={styles.scheduleDescription}
 										>
 											{photo.recurrence === "once"
-												? "Aparece na próxima sincronização"
-												: "Exibição anual"}
+												? isConsumed
+													? consumedAt
+														? `Exibida em ${consumedAt}`
+														: "Já exibida"
+													: "Aparece na próxima sincronização"
+												: photo.consumedAt
+													? formatConsumedAt(
+															photo.consumedAt,
+														)
+														? `Exibida em ${formatConsumedAt(photo.consumedAt)}`
+														: "Exibição anual"
+													: "Exibição anual"}
 										</Text>
 
 										{photo.createdByEmail ? (
 											<Text style={styles.senderText}>
-												Enviada por:{" "}
+												Enviada por: {"\n"}
 												{photo.createdByEmail}
 											</Text>
 										) : null}
@@ -453,6 +528,39 @@ const styles = StyleSheet.create({
 		lineHeight: 14,
 	},
 
+	consumedOverlay: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+
+		padding: spacing.sm,
+
+		borderRadius: radius.md,
+
+		backgroundColor: "rgba(70, 70, 70, 0.52)",
+
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	consumedLabel: {
+		alignItems: "center",
+		justifyContent: "center",
+		gap: spacing.xs,
+	},
+
+	consumedText: {
+		...typography.caption,
+		fontWeight: "600",
+		color: colors.white,
+		textAlign: "center",
+
+		fontSize: 11,
+		lineHeight: 14,
+	},
+
 	photoInfo: {
 		flex: 1,
 		minWidth: 0,
@@ -481,7 +589,7 @@ const styles = StyleSheet.create({
 
 	scheduleDescription: {
 		marginTop: spacing.xs,
-		...typography.body,
+		...typography.caption,
 		color: colors.textSecondary,
 	},
 

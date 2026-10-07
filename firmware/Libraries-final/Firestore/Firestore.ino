@@ -44,6 +44,25 @@ uint32_t nextSleepMinutes = 0;
 // FUNCOES DE APOIO
 // ============================================================
 
+uint32_t minutesUntilNextDay()
+{
+  time_t now = time(nullptr);
+
+  struct tm* timeinfo = localtime(&now);
+
+  timeinfo->tm_hour = 0;
+  timeinfo->tm_min = 0;
+  timeinfo->tm_sec = 0;
+
+  time_t nextDay =
+    mktime(timeinfo) + 24 * 60 * 60;
+
+  uint32_t seconds =
+    (uint32_t)(nextDay - now);
+
+  return (seconds + 59) / 60;
+}
+
 bool canUpdateDisplay()
 {
   if (!sd.exists("/display.json"))
@@ -635,15 +654,68 @@ bool showPhoto(
 
 
   // ============================================================
-  // VERIFICAR SE A IMAGEM JA ESTA NO SD
+  // VERIFICAR ARQUIVO LOCAL
   // ============================================================
 
-  if (!sd.exists(localPath.c_str()))
+  bool needsDownload = true;
+
+  if (sd.exists(localPath.c_str()))
+  {
+    uint64_t localSize =
+      sd.size(localPath.c_str());
+
+    Serial.print(
+      "Imagem ja existe no SD. Tamanho: "
+    );
+
+    Serial.print(localSize);
+
+    Serial.println(
+      " bytes"
+    );
+
+    if (localSize == IMAGE_SIZE)
+    {
+      needsDownload = false;
+
+      Serial.println(
+        "Imagem local valida."
+      );
+    }
+    else
+    {
+      Serial.println(
+        "Imagem local incompleta ou corrompida."
+      );
+
+      Serial.println(
+        "Removendo arquivo para baixar novamente..."
+      );
+
+      if (!sd.remove(localPath.c_str()))
+      {
+        Serial.println(
+          "ERRO: nao foi possivel remover arquivo invalido."
+        );
+
+        return false;
+      }
+    }
+  }
+  else
   {
     Serial.println(
       "Imagem nao encontrada no SD."
     );
+  }
 
+
+  // ============================================================
+  // DOWNLOAD
+  // ============================================================
+
+  if (needsDownload)
+  {
     Serial.println(
       "Baixando imagem do Firebase Storage..."
     );
@@ -661,13 +733,55 @@ bool showPhoto(
     }
 
     Serial.println(
-      "Imagem baixada com sucesso."
+      "Download concluido."
     );
-  }
-  else
-  {
+
+
+    // ==========================================================
+    // VALIDAR DOWNLOAD
+    // ==========================================================
+
+    if (!sd.exists(localPath.c_str()))
+    {
+      Serial.println(
+        "ERRO: arquivo nao apareceu no SD apos download."
+      );
+
+      return false;
+    }
+
+    uint64_t downloadedSize =
+      sd.size(localPath.c_str());
+
+    Serial.print(
+      "Tamanho apos download: "
+    );
+
+    Serial.print(
+      downloadedSize
+    );
+
     Serial.println(
-      "Imagem ja existe no SD."
+      " bytes"
+    );
+
+    if (downloadedSize != IMAGE_SIZE)
+    {
+      Serial.println(
+        "ERRO: download incompleto ou invalido."
+      );
+
+      Serial.println(
+        "Removendo arquivo invalido."
+      );
+
+      sd.remove(localPath.c_str());
+
+      return false;
+    }
+
+    Serial.println(
+      "Download validado."
     );
   }
 
@@ -2270,6 +2384,21 @@ bool chooseTemporaryPhoto(
 
     Serial.println(
       "TEMPORARY: escolhendo YEARLY mais recente."
+    );
+
+    nextSleepMinutes =
+      minutesUntilNextDay();
+
+    Serial.print(
+      "TEMPORARY: YEARLY selecionada. Dormindo por "
+    );
+
+    Serial.print(
+      nextSleepMinutes
+    );
+
+    Serial.println(
+      " minutos."
     );
 
     return true;
