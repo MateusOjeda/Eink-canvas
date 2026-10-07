@@ -77,6 +77,50 @@ bool FirebaseManager::authenticate()
   return ready;
 }
 
+bool FirebaseManager::markTemporaryPhotoConsumed(
+  const char* deviceId,
+  const char* photoId,
+  const char* consumedAt
+)
+{
+  String path =
+    "devices/" + String(deviceId) +
+    "/temporaryPhotos/" + String(photoId);
+
+  FirebaseJson document;
+
+  document.set(
+    "fields/consumedAt/timestampValue",
+    consumedAt
+  );
+
+  if (Firebase.Firestore.patchDocument(
+        &_fbdo,
+        "einkcanvas",
+        "",
+        path.c_str(),
+        document.raw(),
+        "consumedAt"
+      ))
+  {
+    _serial->println(
+      "TEMPORARY: foto marcada como consumida."
+    );
+
+    return true;
+  }
+
+  _serial->println(
+    "TEMPORARY: erro ao marcar como consumida:"
+  );
+
+  _serial->println(
+    _fbdo.errorReason()
+  );
+
+  return false;
+}
+
 bool FirebaseManager::listCollections(
   const char* deviceId
 )
@@ -516,6 +560,304 @@ bool FirebaseManager::syncPhotos(
   _serial->println("=== PHOTOS JSON ===");
   _serial->println(output);
   _serial->println("PHOTOS: JSON MONTADO!");
+
+  return true;
+}
+
+bool FirebaseManager::syncTemporaryPhotos(
+  const char* deviceId,
+  String& output
+)
+{
+  String path =
+    "devices/" +
+    String(deviceId) +
+    "/temporaryPhotos";
+
+  if (!Firebase.Firestore.listDocuments(
+        &_fbdo,
+        "einkcanvas",
+        "",
+        path.c_str(),
+        100,
+        "",
+        "",
+        "",
+        false
+      ))
+  {
+    _serial->println("TEMPORARY PHOTOS: ERRO AO LISTAR DOCUMENTOS:");
+    _serial->println(_fbdo.errorReason());
+
+    return false;
+  }
+
+  FirebaseJson response;
+  response.setJsonData(_fbdo.payload());
+
+  FirebaseJsonData documentsData;
+
+  output = "{\"temporaryPhotos\":[";
+
+  if (!response.get(
+        documentsData,
+        "documents"
+      ))
+  {
+    output += "]}";
+
+    _serial->println();
+    _serial->println("=== TEMPORARY PHOTOS JSON ===");
+    _serial->println(output);
+    _serial->println("TEMPORARY PHOTOS: NENHUMA FOTO.");
+
+    return true;
+  }
+
+  FirebaseJsonArray documents;
+  documents.setJsonArrayData(documentsData.to<String>());
+
+  size_t count = documents.size();
+
+  for (size_t i = 0; i < count; i++)
+  {
+    FirebaseJsonData documentData;
+
+    if (!documents.get(
+          documentData,
+          i
+        ))
+    {
+      continue;
+    }
+
+    FirebaseJson document;
+    document.setJsonData(documentData.to<String>());
+
+    FirebaseJsonData nameData;
+    FirebaseJsonData fieldsData;
+
+    document.get(
+      nameData,
+      "name"
+    );
+
+    document.get(
+      fieldsData,
+      "fields"
+    );
+
+    String name = nameData.to<String>();
+    String fieldsJson = fieldsData.to<String>();
+
+    int lastSlash = name.lastIndexOf('/');
+
+    String id;
+
+    if (lastSlash >= 0)
+    {
+      id = name.substring(lastSlash + 1);
+    }
+    else
+    {
+      id = name;
+    }
+
+    FirebaseJson fields;
+    fields.setJsonData(fieldsJson);
+
+    FirebaseJsonData data;
+
+    String createdByUid = "";
+    String previewPath = "";
+    String epaperFilePath = "";
+    String recurrence = "";
+    String createdAt = "";
+    String consumedAt = "";
+
+    int width = 0;
+    int height = 0;
+    int durationMinutes = 0;
+
+    if (fields.get(
+          data,
+          "createdByUid/stringValue"
+        ))
+    {
+      createdByUid = data.to<String>();
+    }
+
+    if (fields.get(
+          data,
+          "previewPath/stringValue"
+        ))
+    {
+      previewPath = data.to<String>();
+    }
+
+    if (fields.get(
+          data,
+          "epaperFilePath/stringValue"
+        ))
+    {
+      epaperFilePath = data.to<String>();
+    }
+
+    if (fields.get(
+          data,
+          "width/integerValue"
+        ))
+    {
+      width = data.to<int>();
+    }
+
+    if (fields.get(
+          data,
+          "height/integerValue"
+        ))
+    {
+      height = data.to<int>();
+    }
+
+    if (fields.get(
+          data,
+          "recurrence/stringValue"
+        ))
+    {
+      recurrence = data.to<String>();
+    }
+
+    if (fields.get(
+          data,
+          "durationMinutes/integerValue"
+        ))
+    {
+      durationMinutes = data.to<int>();
+    }
+
+    if (fields.get(
+          data,
+          "createdAt/timestampValue"
+        ))
+    {
+      createdAt = data.to<String>();
+    }
+
+    if (fields.get(
+          data,
+          "consumedAt/timestampValue"
+        ))
+    {
+      consumedAt = data.to<String>();
+    }
+
+    if (i > 0)
+    {
+      output += ",";
+    }
+
+    output += "{";
+
+    output += "\"id\":\"";
+    output += id;
+    output += "\",";
+
+    output += "\"createdByUid\":\"";
+    output += createdByUid;
+    output += "\",";
+
+    output += "\"previewPath\":\"";
+    output += previewPath;
+    output += "\",";
+
+    output += "\"epaperFilePath\":\"";
+    output += epaperFilePath;
+    output += "\",";
+
+    output += "\"width\":";
+    output += String(width);
+    output += ",";
+
+    output += "\"height\":";
+    output += String(height);
+    output += ",";
+
+    output += "\"recurrence\":\"";
+    output += recurrence;
+    output += "\"";
+
+    if (recurrence == "once")
+    {
+      output += ",\"durationMinutes\":";
+      output += String(durationMinutes);
+    }
+
+    if (recurrence == "yearly")
+    {
+      FirebaseJsonData yearlyDateData;
+
+      if (fields.get(
+            yearlyDateData,
+            "yearlyDate/mapValue/fields"
+          ))
+      {
+        FirebaseJson yearlyFields;
+        yearlyFields.setJsonData(
+          yearlyDateData.to<String>()
+        );
+
+        int month = 0;
+        int day = 0;
+
+        if (yearlyFields.get(
+              data,
+              "month/integerValue"
+            ))
+        {
+          month = data.to<int>();
+        }
+
+        if (yearlyFields.get(
+              data,
+              "day/integerValue"
+            ))
+        {
+          day = data.to<int>();
+        }
+
+        output += ",\"yearlyDate\":{";
+
+        output += "\"month\":";
+        output += String(month);
+        output += ",";
+
+        output += "\"day\":";
+        output += String(day);
+
+        output += "}";
+      }
+    }
+
+    output += ",\"createdAt\":\"";
+    output += createdAt;
+    output += "\"";
+
+    if (consumedAt.length() > 0)
+    {
+      output += ",\"consumedAt\":\"";
+      output += consumedAt;
+      output += "\"";
+    }
+
+    output += "}";
+  }
+
+  output += "]}";
+
+  _serial->println();
+  _serial->println("=== TEMPORARY PHOTOS JSON ===");
+  _serial->println(output);
+  _serial->println("TEMPORARY PHOTOS: JSON MONTADO!");
 
   return true;
 }

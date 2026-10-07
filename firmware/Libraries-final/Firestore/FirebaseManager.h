@@ -49,6 +49,11 @@ public:
     String& output
   );
 
+  bool syncTemporaryPhotos(
+    const char* deviceId,
+    String& output
+  );
+
   bool readDevicePriority(
     const char* deviceId,
     String& collectionId,
@@ -58,6 +63,12 @@ public:
 
   bool clearDevicePriority(
     const char* deviceId
+  );
+
+  bool markTemporaryPhotoConsumed(
+    const char* deviceId,
+    const char* photoId,
+    const char* consumedAt
   );
 
 private:

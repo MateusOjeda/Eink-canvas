@@ -5,6 +5,7 @@
 #include "SDManager.h"
 #include "FirebaseManager.h"
 #include "WiFiManager.h"
+#include "TextRenderer.h"
 
 #include "Display_EPD_W21.h"
 #include "Display_EPD_W21_spi.h"
@@ -18,9 +19,6 @@
 
 #define IMAGE_SIZE 192000
 
-#define WIFI_SSID "OJEDA"
-#define WIFI_PASSWORD "mateus118"
-
 #define API_KEY "AIzaSyCzNPNS0mugUk31NpC1XGKKZjR6qQPHF50"
 
 #define STORAGE_BUCKET_ID "einkcanvas.firebasestorage.app"
@@ -28,17 +26,143 @@
 SDManager sd;
 FirebaseManager firebase;
 FirebaseJson stateJson;
+FirebaseJson displayJson;
 WiFiManager wifiManager;
+TextRenderer textRenderer;
+
+uint32_t nextSleepMinutes = 0;
 
 #define BUTTON_SYNC  46  // Botao 2
 #define BUTTON_NEXT   9  // Botao 3 - acorda o ESP
 #define BUTTON_INFO  41  // Botao 12
 #define BUTTON_WIFI  42  // Botao 11
 
+#define displayRatePeriod 120
+
 
 // ============================================================
 // FUNCOES DE APOIO
 // ============================================================
+
+bool canUpdateDisplay()
+{
+  if (!sd.exists("/display.json"))
+  {
+    return true;
+  }
+
+  uint64_t fileSize = sd.size("/display.json");
+
+  if (fileSize == 0)
+  {
+    return true;
+  }
+
+  char* buffer = new char[fileSize + 1];
+
+  if (!buffer)
+  {
+    Serial.println("Erro ao alocar memoria para /display.json");
+    return true;
+  }
+
+  size_t bytesRead = sd.read(
+    "/display.json",
+    (uint8_t*)buffer,
+    fileSize
+  );
+
+  buffer[bytesRead] = '\0';
+
+  FirebaseJson json;
+  json.setJsonData(buffer);
+
+  delete[] buffer;
+
+  FirebaseJsonData data;
+
+  if (!json.get(data, "lastUpdatedAt"))
+  {
+    return true;
+  }
+
+  String lastUpdatedAt = data.stringValue;
+
+  if (lastUpdatedAt.length() == 0)
+  {
+    return true;
+  }
+
+  time_t lastUpdate = parseTimestamp(lastUpdatedAt);
+  time_t now = time(nullptr);
+
+  if (lastUpdate <= 0 || now <= 0)
+  {
+    Serial.println("Nao foi possivel validar horario do display");
+    return true;
+  }
+
+  time_t elapsed = now - lastUpdate;
+
+  Serial.printf(
+    "Ultimo update do display: %ld segundos atras\n",
+    (long)elapsed
+  );
+
+  if (elapsed < displayRatePeriod)
+  {
+    Serial.printf(
+      "Display bloqueado. Faltam %ld segundos.\n",
+      (long)(displayRatePeriod - elapsed)
+    );
+
+    return false;
+  }
+
+  return true;
+}
+
+
+bool recordDisplayUpdate()
+{
+  String timestamp = getCurrentTimestamp();
+
+  if (timestamp.length() == 0)
+  {
+    Serial.println("Nao foi possivel obter timestamp do display");
+    return false;
+  }
+
+  displayJson.clear();
+  displayJson.set("lastUpdatedAt", timestamp);
+
+  String output;
+  displayJson.toString(output, false);
+
+  if (sd.exists("/display.json"))
+  {
+    sd.remove("/display.json");
+  }
+
+  bool success = sd.write(
+    "/display.json",
+    (const uint8_t*)output.c_str(),
+    output.length()
+  );
+
+  if (!success)
+  {
+    Serial.println("Nao foi possivel salvar /display.json");
+    return false;
+  }
+
+  Serial.println("Display atualizado em:");
+  Serial.println(timestamp);
+
+  return true;
+}
+
+
 bool writeStateFirebase()
 {
   String stateOutput;
@@ -56,6 +180,7 @@ bool writeStateFirebase()
     stateOutput
   );
 }
+
 
 bool syncClock()
 {
@@ -128,9 +253,6 @@ time_t parseTimestamp(const String& timestamp)
     return 0;
   }
 
-  // Converte a data UTC para Unix timestamp.
-  // Não usa mktime(), pois mktime() considera o horário local.
-
   int days = 0;
 
   for (int y = 1970; y < year; y++)
@@ -177,19 +299,122 @@ time_t parseTimestamp(const String& timestamp)
     second;
 }
 
+
 // ============================================================
 // DISPLAY
 // ============================================================
+
+bool displayTextScreen(const String& text)
+{
+  if (!canUpdateDisplay())
+  {
+    Serial.println(
+      "INFO: atualizacao bloqueada. Menos de 3 minutos desde a ultima atualizacao."
+    );
+
+    return false;
+  }
+
+  const int width = 800;
+  const int height = 480;
+
+  uint8_t* imageData =
+    (uint8_t*)malloc(IMAGE_SIZE);
+
+  if (imageData == nullptr)
+  {
+    Serial.println(
+      "INFO: nao foi possivel reservar memoria."
+    );
+
+    return false;
+  }
+
+  if (!textRenderer.render(
+        imageData,
+        width,
+        height,
+        text,
+        black,
+        white
+      ))
+  {
+    Serial.println(
+      "INFO: erro ao renderizar texto."
+    );
+
+    free(imageData);
+
+    return false;
+  }
+
+  SPI.end();
+
+  SPI.begin(
+    EPD_SCK,
+    -1,
+    EPD_MOSI,
+    EPD_CS
+  );
+
+  SPI.beginTransaction(
+    SPISettings(
+      10000000,
+      MSBFIRST,
+      SPI_MODE0
+    )
+  );
+
+  EPD_init_fast();
+
+  EPD_W21_WriteCMD(0x10);
+
+  for (int i = 0; i < IMAGE_SIZE; i++)
+  {
+    EPD_W21_WriteDATA(
+      imageData[i]
+    );
+  }
+
+  EPD_W21_WriteCMD(0x12);
+
+  EPD_W21_WriteDATA(0x00);
+
+  delay(1);
+
+  lcd_chkstatus();
+
+  EPD_sleep();
+
+  SPI.endTransaction();
+  SPI.end();
+
+  free(imageData);
+
+  if (!sd.begin(Serial))
+  {
+    Serial.println(
+      "INFO: erro ao reinicializar SD."
+    );
+
+    return false;
+  }
+
+  recordDisplayUpdate();
+
+  Serial.println(
+    "INFO: tela exibida."
+  );
+
+  return true;
+}
+
 
 bool displayImageFromSD(
   const char* filename
 )
 {
-  // ============================================================
-  // VERIFICAR SE PODE ATUALIZAR
-  // ============================================================
-
-  if (!canUpdateImage())
+  if (!canUpdateDisplay())
   {
     Serial.println(
       "UPDATE: atualizacao nao disponivel - periodo de refresh respeitado"
@@ -373,17 +598,17 @@ bool displayImageFromSD(
   SPI.end();
 
   if (!sd.begin(Serial))
-    {
-      Serial.println(
-        "ERRO: não foi possível inicializar o SD."
-      );
+  {
+    Serial.println(
+      "ERRO: nao foi possivel inicializar o SD."
+    );
 
-      return false;
-    }
+    free(imageData);
 
-  // ============================================================
-  // LIBERA RAM
-  // ============================================================
+    return false;
+  }
+
+  recordDisplayUpdate();
 
   free(imageData);
 
@@ -394,12 +619,13 @@ bool displayImageFromSD(
   return true;
 }
 
-bool showCurrentPhoto(
+
+bool showPhoto(
   const String& imageId,
   const String& epaperFilePath
 )
 {
-  Serial.println("=== SHOW CURRENT PHOTO ===");
+  Serial.println("=== SHOW PHOTO ===");
 
   String localPath =
     "/" + imageId + ".bin";
@@ -470,6 +696,249 @@ bool showCurrentPhoto(
   );
 
   return true;
+}
+
+
+// ============================================================
+// INFO - OBTER DESCRICAO DA IMAGEM ATUAL
+// ============================================================
+
+bool getCurrentImageDescription(
+  String& description,
+  const String& photosJsonString
+)
+{
+  description = "";
+
+  FirebaseJsonData currentImageData;
+
+  if (!stateJson.get(
+        currentImageData,
+        "currentImageId"
+      ))
+  {
+    Serial.println(
+      "INFO: currentImageId nao encontrado."
+    );
+
+    return false;
+  }
+
+  String currentImageId =
+    currentImageData.to<String>();
+
+  if (currentImageId.length() == 0)
+  {
+    Serial.println(
+      "INFO: nenhuma imagem atual."
+    );
+
+    return false;
+  }
+
+  Serial.print(
+    "INFO: imagem atual: "
+  );
+
+  Serial.println(
+    currentImageId
+  );
+
+
+  // ============================================================
+  // PHOTOS
+  // ============================================================
+
+  FirebaseJson photosJson;
+
+  if (!photosJson.setJsonData(
+        photosJsonString
+      ))
+  {
+    Serial.println(
+      "INFO: dados de photos invalidos."
+    );
+
+    return false;
+  }
+
+
+  // ============================================================
+  // COLLECTIONS
+  // ============================================================
+
+  FirebaseJsonData collectionsData;
+
+  if (!photosJson.get(
+        collectionsData,
+        "collections"
+      ))
+  {
+    Serial.println(
+      "INFO: collections nao encontrado."
+    );
+
+    return false;
+  }
+
+  FirebaseJsonArray collections;
+
+  if (!collectionsData.getArray(
+        collections
+      ))
+  {
+    Serial.println(
+      "INFO: erro ao ler collections."
+    );
+
+    return false;
+  }
+
+
+  // ============================================================
+  // PROCURAR IMAGEM
+  // ============================================================
+
+  for (
+    size_t i = 0;
+    i < collections.size();
+    i++
+  )
+  {
+    FirebaseJsonData collectionData;
+
+    if (!collections.get(
+          collectionData,
+          i
+        ))
+    {
+      continue;
+    }
+
+    FirebaseJson collection;
+
+    if (!collectionData.getJSON(
+          collection
+        ))
+    {
+      continue;
+    }
+
+    FirebaseJsonData imagesData;
+
+    if (!collection.get(
+          imagesData,
+          "images"
+        ))
+    {
+      continue;
+    }
+
+    FirebaseJsonArray images;
+
+    if (!imagesData.getArray(
+          images
+        ))
+    {
+      continue;
+    }
+
+
+    // ==========================================================
+    // PROCURAR IMAGEM DENTRO DA COLECAO
+    // ==========================================================
+
+    for (
+      size_t j = 0;
+      j < images.size();
+      j++
+    )
+    {
+      FirebaseJsonData imageData;
+
+      if (!images.get(
+            imageData,
+            j
+          ))
+      {
+        continue;
+      }
+
+      FirebaseJson image;
+
+      if (!imageData.getJSON(
+            image
+          ))
+      {
+        continue;
+      }
+
+      FirebaseJsonData imageIdData;
+
+      if (!image.get(
+            imageIdData,
+            "id"
+          ))
+      {
+        continue;
+      }
+
+      String imageId =
+        imageIdData.to<String>();
+
+      if (imageId != currentImageId)
+      {
+        continue;
+      }
+
+
+      // ========================================================
+      // ENCONTRAMOS A IMAGEM
+      // ========================================================
+
+      FirebaseJsonData descriptionData;
+
+      if (!image.get(
+            descriptionData,
+            "description"
+          ))
+      {
+        Serial.println(
+          "INFO: imagem nao possui campo description."
+        );
+
+        return false;
+      }
+
+      description =
+        descriptionData.to<String>();
+
+      if (description.length() == 0)
+      {
+        Serial.println(
+          "INFO: campo description esta vazio."
+        );
+
+        return false;
+      }
+
+      Serial.println(
+        "INFO: descricao encontrada:"
+      );
+
+      Serial.println(
+        description
+      );
+
+      return true;
+    }
+  }
+
+  Serial.println(
+    "INFO: imagem atual nao encontrada em photos."
+  );
+
+  return false;
 }
 
 
@@ -622,145 +1091,6 @@ bool saveState()
   );
 
   return true;
-}
-
-// ============================================================
-// VERIFICAR SE PODE ATUALIZAR A IMAGEM
-// ============================================================
-
-bool canUpdateImage()
-{
-  FirebaseJsonData historyData;
-
-  if (!stateJson.get(
-        historyData,
-        "displayHistory"
-      ))
-  {
-    Serial.println(
-      "UPDATE: displayHistory nao encontrado."
-    );
-
-    return true;
-  }
-
-  FirebaseJsonArray history;
-
-  if (!historyData.getArray(history))
-  {
-    Serial.println(
-      "UPDATE: erro ao ler displayHistory."
-    );
-
-    return false;
-  }
-
-  if (history.size() == 0)
-  {
-    Serial.println(
-      "UPDATE: nenhuma imagem exibida anteriormente."
-    );
-
-    return true;
-  }
-
-  FirebaseJsonData firstItemData;
-
-  if (!history.get(
-        firstItemData,
-        0
-      ))
-  {
-    return false;
-  }
-
-  FirebaseJson firstItem;
-
-  if (!firstItemData.getJSON(
-        firstItem
-      ))
-  {
-    Serial.println(
-      "UPDATE: primeiro item do historico invalido."
-    );
-
-    return false;
-  }
-
-  FirebaseJsonData displayedAtData;
-
-  if (!firstItem.get(
-        displayedAtData,
-        "lastDisplayedAt"
-      ))
-  {
-    Serial.println(
-      "UPDATE: lastDisplayedAt nao encontrado."
-    );
-
-    return true;
-  }
-
-  String lastDisplayedAt =
-    displayedAtData.to<String>();
-
-  // Historico antigo migrado.
-  // Como nao temos a data, consideramos que
-  // a atualizacao esta disponivel.
-  if (lastDisplayedAt.length() == 0)
-  {
-    Serial.println(
-      "UPDATE: timestamp antigo sem data. Atualizacao permitida."
-    );
-
-    return true;
-  }
-
-  time_t lastTimestamp =
-    parseTimestamp(
-      lastDisplayedAt
-    );
-
-  if (lastTimestamp == 0)
-  {
-    Serial.println(
-      "UPDATE: timestamp invalido."
-    );
-
-    return false;
-  }
-
-  time_t now =
-    time(nullptr);
-
-  double elapsed =
-    difftime(
-      now,
-      lastTimestamp
-    );
-
-  Serial.print(
-    "Segundos desde ultimo update: "
-  );
-
-  Serial.println(
-    elapsed
-  );
-
-  if (elapsed >= 3 * 60)
-  {
-    Serial.println(
-      "UPDATE: disponivel."
-    );
-
-    return true;
-  }
-
-  Serial.println(
-    "UPDATE: ainda nao passaram 3 minutos."
-  );
-
-  return false;
 }
 
 
@@ -930,15 +1260,1041 @@ void waitButtonRelease(int pin)
 
 
 // ============================================================
+// CHOOSE PRIORITY PHOTO
+// ============================================================
+
+bool choosePriorityPhoto(
+  String& outputImageId,
+  String& outputEpaperFilePath,
+  const String& priorityCollectionId,
+  const String& priorityImageId,
+  bool hasPriority,
+  const String& photosJsonString
+)
+{
+  outputImageId = "";
+  outputEpaperFilePath = "";
+
+  if (!hasPriority)
+  {
+    return false;
+  }
+
+  Serial.println(
+    "=== CHOOSE PRIORITY PHOTO ==="
+  );
+
+
+  // ============================================================
+  // CONFIG
+  // ============================================================
+
+  uint64_t configFileSize =
+    sd.size("/config.json");
+
+  if (configFileSize == 0)
+  {
+    Serial.println(
+      "PRIORITY: /config.json nao existe ou esta vazio."
+    );
+
+    return false;
+  }
+
+  uint8_t* configBuffer =
+    new uint8_t[configFileSize + 1];
+
+  if (!configBuffer)
+  {
+    Serial.println(
+      "PRIORITY: erro ao alocar memoria."
+    );
+
+    return false;
+  }
+
+  size_t configBytesRead =
+    sd.read(
+      "/config.json",
+      configBuffer,
+      configFileSize
+    );
+
+  configBuffer[configBytesRead] = '\0';
+
+  FirebaseJson configJson;
+
+  if (!configJson.setJsonData(
+        (char*)configBuffer
+      ))
+  {
+    Serial.println(
+      "PRIORITY: config JSON invalido."
+    );
+
+    delete[] configBuffer;
+
+    return false;
+  }
+
+  delete[] configBuffer;
+
+  FirebaseJsonData orientationData;
+
+  if (!configJson.get(
+        orientationData,
+        "orientation"
+      ))
+  {
+    Serial.println(
+      "PRIORITY: orientation nao encontrado."
+    );
+
+    return false;
+  }
+
+  String orientation =
+    orientationData.to<String>();
+
+  int requiredWidth;
+  int requiredHeight;
+
+  if (orientation == "landscape")
+  {
+    requiredWidth = 800;
+    requiredHeight = 480;
+  }
+  else if (orientation == "portrait")
+  {
+    requiredWidth = 480;
+    requiredHeight = 800;
+  }
+  else
+  {
+    Serial.println(
+      "PRIORITY: orientation invalida."
+    );
+
+    return false;
+  }
+
+
+  // ============================================================
+  // PHOTOS
+  // ============================================================
+
+  FirebaseJson photosJson;
+
+  if (!photosJson.setJsonData(
+        photosJsonString
+      ))
+  {
+    Serial.println(
+      "PRIORITY: dados de photos invalidos."
+    );
+
+    return false;
+  }
+
+  FirebaseJsonData collectionsData;
+
+  if (!photosJson.get(
+        collectionsData,
+        "collections"
+      ))
+  {
+    Serial.println(
+      "PRIORITY: collections nao encontrado."
+    );
+
+    return false;
+  }
+
+  FirebaseJsonArray collections;
+
+  if (!collectionsData.getArray(
+        collections
+      ))
+  {
+    Serial.println(
+      "PRIORITY: erro ao ler collections."
+    );
+
+    return false;
+  }
+
+
+  // ============================================================
+  // PROCURAR COLECAO DA PRIORIDADE
+  // ============================================================
+
+  for (size_t i = 0;
+       i < collections.size();
+       i++)
+  {
+    FirebaseJsonData collectionData;
+
+    if (!collections.get(
+          collectionData,
+          i
+        ))
+    {
+      continue;
+    }
+
+    FirebaseJson collection;
+
+    if (!collectionData.getJSON(
+          collection
+        ))
+    {
+      continue;
+    }
+
+    FirebaseJsonData collectionIdData;
+    FirebaseJsonData collectionActiveData;
+    FirebaseJsonData imagesData;
+
+    if (!collection.get(
+          collectionIdData,
+          "id"
+        ))
+    {
+      continue;
+    }
+
+    String collectionId =
+      collectionIdData.to<String>();
+
+    if (collectionId !=
+        priorityCollectionId)
+    {
+      continue;
+    }
+
+    if (!collection.get(
+          collectionActiveData,
+          "active"
+        ))
+    {
+      Serial.println(
+        "PRIORITY: colecao sem campo active."
+      );
+
+      return false;
+    }
+
+    if (!collectionActiveData.to<bool>())
+    {
+      Serial.println(
+        "PRIORITY: colecao inativa."
+      );
+
+      return false;
+    }
+
+    if (!collection.get(
+          imagesData,
+          "images"
+        ))
+    {
+      Serial.println(
+        "PRIORITY: images nao encontrado."
+      );
+
+      return false;
+    }
+
+    FirebaseJsonArray images;
+
+    if (!imagesData.getArray(images))
+    {
+      Serial.println(
+        "PRIORITY: erro ao ler images."
+      );
+
+      return false;
+    }
+
+
+    // ==========================================================
+    // PROCURAR IMAGEM DA PRIORIDADE
+    // ==========================================================
+
+    for (size_t j = 0;
+         j < images.size();
+         j++)
+    {
+      FirebaseJsonData imageData;
+
+      if (!images.get(
+            imageData,
+            j
+          ))
+      {
+        continue;
+      }
+
+      FirebaseJson image;
+
+      if (!imageData.getJSON(image))
+      {
+        continue;
+      }
+
+      FirebaseJsonData imageIdData;
+      FirebaseJsonData activeData;
+      FirebaseJsonData widthData;
+      FirebaseJsonData heightData;
+      FirebaseJsonData epaperFilePathData;
+
+      if (!image.get(
+            imageIdData,
+            "id"
+          ))
+      {
+        continue;
+      }
+
+      String imageId =
+        imageIdData.to<String>();
+
+      if (imageId !=
+          priorityImageId)
+      {
+        continue;
+      }
+
+      if (!image.get(
+            activeData,
+            "active"
+          ))
+      {
+        Serial.println(
+          "PRIORITY: imagem sem campo active."
+        );
+
+        return false;
+      }
+
+      if (!activeData.to<bool>())
+      {
+        Serial.println(
+          "PRIORITY: imagem inativa."
+        );
+
+        return false;
+      }
+
+      if (!image.get(
+            widthData,
+            "width"
+          ))
+      {
+        Serial.println(
+          "PRIORITY: imagem sem width."
+        );
+
+        return false;
+      }
+
+      if (!image.get(
+            heightData,
+            "height"
+          ))
+      {
+        Serial.println(
+          "PRIORITY: imagem sem height."
+        );
+
+        return false;
+      }
+
+      if (widthData.to<int>() !=
+          requiredWidth ||
+          heightData.to<int>() !=
+          requiredHeight)
+      {
+        Serial.println(
+          "PRIORITY: dimensao incompativel."
+        );
+
+        return false;
+      }
+
+      if (!image.get(
+            epaperFilePathData,
+            "epaperFilePath"
+          ))
+      {
+        Serial.println(
+          "PRIORITY: imagem sem epaperFilePath."
+        );
+
+        return false;
+      }
+
+
+      // ========================================================
+      // RESULTADO
+      // ========================================================
+
+      outputImageId =
+        imageId;
+
+      outputEpaperFilePath =
+        epaperFilePathData.to<String>();
+
+      stateJson.set(
+        "lastCollectionId",
+        collectionId
+      );
+
+      Serial.println(
+        "=== FOTO PRIORITARIA ESCOLHIDA ==="
+      );
+
+      Serial.print(
+        "Collection ID: "
+      );
+
+      Serial.println(
+        collectionId
+      );
+
+      Serial.print(
+        "Image ID: "
+      );
+
+      Serial.println(
+        outputImageId
+      );
+
+      Serial.print(
+        "Epaper file path: "
+      );
+
+      Serial.println(
+        outputEpaperFilePath
+      );
+
+      return true;
+    }
+
+    Serial.println(
+      "PRIORITY: imagem nao encontrada na colecao."
+    );
+
+    return false;
+  }
+
+
+  // ============================================================
+  // COLECAO NAO ENCONTRADA
+  // ============================================================
+
+  Serial.println(
+    "PRIORITY: colecao nao encontrada."
+  );
+
+  return false;
+}
+
+
+// ============================================================
+// CHOOSE TEMPORARY PHOTO
+// ============================================================
+
+bool chooseTemporaryPhoto(
+  String& outputImageId,
+  String& outputEpaperFilePath,
+  const String& temporaryPhotosJsonString
+)
+{
+  outputImageId = "";
+  outputEpaperFilePath = "";
+
+  Serial.println("=== CHOOSE TEMPORARY PHOTO ===");
+
+  // =========================================================
+  // CONFIG
+  // =========================================================
+
+  if (!sd.exists("/config.json"))
+  {
+    Serial.println(
+      "TEMPORARY: /config.json não existe."
+    );
+
+    return false;
+  }
+
+  uint64_t configSize = sd.size(
+    "/config.json"
+  );
+
+  if (configSize == 0)
+  {
+    Serial.println(
+      "TEMPORARY: /config.json está vazio."
+    );
+
+    return false;
+  }
+
+  uint8_t* configBuffer =
+    new uint8_t[configSize + 1];
+
+  if (!configBuffer)
+  {
+    Serial.println(
+      "TEMPORARY: erro de memória."
+    );
+
+    return false;
+  }
+
+  size_t configRead = sd.read(
+    "/config.json",
+    configBuffer,
+    configSize
+  );
+
+  if (configRead != configSize)
+  {
+    delete[] configBuffer;
+
+    Serial.println(
+      "TEMPORARY: erro ao ler /config.json."
+    );
+
+    return false;
+  }
+
+  configBuffer[configRead] = '\0';
+
+  String configJson =
+    String((char*)configBuffer);
+
+  delete[] configBuffer;
+
+  FirebaseJson config;
+  config.setJsonData(configJson);
+
+  FirebaseJsonData configData;
+
+  if (!config.get(
+        configData,
+        "orientation"
+      ))
+  {
+    Serial.println(
+      "TEMPORARY: orientation não encontrada."
+    );
+
+    return false;
+  }
+
+  String orientation =
+    configData.to<String>();
+
+  int requiredWidth;
+  int requiredHeight;
+
+  if (orientation == "landscape")
+  {
+    requiredWidth = 800;
+    requiredHeight = 480;
+  }
+  else if (orientation == "portrait")
+  {
+    requiredWidth = 480;
+    requiredHeight = 800;
+  }
+  else
+  {
+    Serial.println(
+      "TEMPORARY: orientation invalida."
+    );
+
+    return false;
+  }
+
+  // =========================================================
+  // TEMPORARY PHOTOS
+  // =========================================================
+
+  FirebaseJson json;
+
+  if (!json.setJsonData(
+        temporaryPhotosJsonString
+      ))
+  {
+    Serial.println(
+      "TEMPORARY: dados de temporaryPhotos invalidos."
+    );
+
+    return false;
+  }
+
+  FirebaseJsonData photosData;
+
+  if (!json.get(
+        photosData,
+        "temporaryPhotos"
+      ))
+  {
+    Serial.println(
+      "TEMPORARY: lista temporaryPhotos não encontrada."
+    );
+
+    return false;
+  }
+
+  FirebaseJsonArray photos;
+
+  if (!photosData.getArray(photos))
+  {
+    Serial.println(
+      "TEMPORARY: erro ao ler temporaryPhotos."
+    );
+
+    return false;
+  }
+
+  // =========================================================
+  // DATA ATUAL
+  // =========================================================
+
+  time_t now = time(nullptr);
+
+  struct tm* currentTime =
+    localtime(&now);
+
+  if (currentTime == nullptr)
+  {
+    Serial.println(
+      "TEMPORARY: não foi possível obter data atual."
+    );
+
+    return false;
+  }
+
+  int currentMonth =
+    currentTime->tm_mon + 1;
+
+  int currentDay =
+    currentTime->tm_mday;
+
+  int currentYear =
+    currentTime->tm_year + 1900;
+
+  // =========================================================
+  // ONCE
+  // =========================================================
+
+  bool foundOnce = false;
+
+  time_t oldestOnceCreatedAt = 0;
+
+  String selectedOnceId;
+  String selectedOncePath;
+
+  uint32_t selectedOnceDurationMinutes = 0;
+
+  for (size_t i = 0; i < photos.size(); i++)
+  {
+    FirebaseJsonData itemData;
+
+    if (!photos.get(itemData, i))
+      continue;
+
+    FirebaseJson item;
+
+    item.setJsonData(
+      itemData.to<String>()
+    );
+
+    FirebaseJsonData data;
+
+    if (!item.get(
+          data,
+          "recurrence"
+        ))
+      continue;
+
+    String recurrence =
+      data.to<String>();
+
+    if (recurrence != "once")
+      continue;
+
+    if (!item.get(
+          data,
+          "id"
+        ))
+      continue;
+
+    String imageId =
+      data.to<String>();
+
+    if (item.get(
+          data,
+          "consumedAt"
+        ))
+    {
+      Serial.print(
+        "TEMPORARY: ONCE ja consumida: "
+      );
+
+      Serial.println(
+        imageId
+      );
+
+      continue;
+    }
+
+    if (!item.get(
+          data,
+          "durationMinutes"
+        ))
+      continue;
+
+    uint32_t durationMinutes =
+      data.to<uint32_t>();
+
+    if (!item.get(
+          data,
+          "epaperFilePath"
+        ))
+      continue;
+
+    String epaperFilePath =
+      data.to<String>();
+
+    if (!item.get(
+          data,
+          "width"
+        ))
+      continue;
+
+    int width =
+      data.to<int>();
+
+    if (!item.get(
+          data,
+          "height"
+        ))
+      continue;
+
+    int height =
+      data.to<int>();
+
+    if (
+      width != requiredWidth ||
+      height != requiredHeight
+    )
+    {
+      continue;
+    }
+
+    if (!item.get(
+          data,
+          "createdAt"
+        ))
+      continue;
+
+    String createdAt =
+      data.to<String>();
+
+    time_t createdTimestamp =
+      parseTimestamp(createdAt);
+
+    if (createdTimestamp <= 0)
+      continue;
+
+    if (
+      !foundOnce ||
+      createdTimestamp < oldestOnceCreatedAt
+    )
+    {
+      foundOnce = true;
+
+      oldestOnceCreatedAt =
+        createdTimestamp;
+
+      selectedOnceId =
+        imageId;
+
+      selectedOncePath =
+        epaperFilePath;
+
+      selectedOnceDurationMinutes =
+        durationMinutes;
+    }
+  }
+
+  if (foundOnce)
+  {
+    nextSleepMinutes =
+      selectedOnceDurationMinutes;
+
+    outputImageId =
+      selectedOnceId;
+
+    outputEpaperFilePath =
+      selectedOncePath;
+
+    Serial.println(
+      "TEMPORARY: encontrada ONCE válida."
+    );
+
+    Serial.print(
+      "TEMPORARY: imageId = "
+    );
+
+    Serial.println(
+      outputImageId
+    );
+
+    Serial.print(
+      "TEMPORARY: durationMinutes = "
+    );
+
+    Serial.println(
+      selectedOnceDurationMinutes
+    );
+
+    Serial.println(
+      "TEMPORARY: escolhendo ONCE mais antiga."
+    );
+
+    return true;
+  }
+
+  // =========================================================
+  // YEARLY
+  // =========================================================
+
+  bool foundYearly = false;
+
+  time_t newestYearlyCreatedAt = 0;
+
+  String selectedYearlyId;
+  String selectedYearlyPath;
+
+  for (size_t i = 0; i < photos.size(); i++)
+  {
+    FirebaseJsonData itemData;
+
+    if (!photos.get(itemData, i))
+      continue;
+
+    FirebaseJson item;
+
+    item.setJsonData(
+      itemData.to<String>()
+    );
+
+    FirebaseJsonData data;
+
+    if (!item.get(
+          data,
+          "recurrence"
+        ))
+      continue;
+
+    String recurrence =
+      data.to<String>();
+
+    if (recurrence != "yearly")
+      continue;
+
+    if (!item.get(
+          data,
+          "id"
+        ))
+      continue;
+
+    String imageId =
+      data.to<String>();
+
+    if (item.get(
+          data,
+          "consumedAt"
+        ))
+    {
+      String consumedAt =
+        data.to<String>();
+
+      time_t consumedTimestamp =
+        parseTimestamp(consumedAt);
+
+      if (consumedTimestamp > 0)
+      {
+        struct tm* consumedTime =
+          gmtime(&consumedTimestamp);
+
+        if (
+          consumedTime != nullptr &&
+          (consumedTime->tm_year + 1900) ==
+          currentYear
+        )
+        {
+          Serial.print(
+            "TEMPORARY: YEARLY ja consumida neste ano: "
+          );
+
+          Serial.println(
+            imageId
+          );
+
+          continue;
+        }
+      }
+    }
+
+    if (!item.get(
+          data,
+          "epaperFilePath"
+        ))
+      continue;
+
+    String epaperFilePath =
+      data.to<String>();
+
+    if (!item.get(
+          data,
+          "width"
+        ))
+      continue;
+
+    int width =
+      data.to<int>();
+
+    if (!item.get(
+          data,
+          "height"
+        ))
+      continue;
+
+    int height =
+      data.to<int>();
+
+    if (
+      width != requiredWidth ||
+      height != requiredHeight
+    )
+    {
+      continue;
+    }
+
+    if (!item.get(
+          data,
+          "yearlyDate/month"
+        ))
+      continue;
+
+    int month =
+      data.to<int>();
+
+    if (!item.get(
+          data,
+          "yearlyDate/day"
+        ))
+      continue;
+
+    int day =
+      data.to<int>();
+
+    if (
+      month != currentMonth ||
+      day != currentDay
+    )
+    {
+      continue;
+    }
+
+    if (!item.get(
+          data,
+          "createdAt"
+        ))
+      continue;
+
+    String createdAt =
+      data.to<String>();
+
+    time_t createdTimestamp =
+      parseTimestamp(createdAt);
+
+    if (createdTimestamp <= 0)
+      continue;
+
+    if (
+      !foundYearly ||
+      createdTimestamp > newestYearlyCreatedAt
+    )
+    {
+      foundYearly = true;
+
+      newestYearlyCreatedAt =
+        createdTimestamp;
+
+      selectedYearlyId =
+        imageId;
+
+      selectedYearlyPath =
+        epaperFilePath;
+    }
+  }
+
+  if (foundYearly)
+  {
+    outputImageId =
+      selectedYearlyId;
+
+    outputEpaperFilePath =
+      selectedYearlyPath;
+
+    Serial.println(
+      "TEMPORARY: encontrada YEARLY válida para hoje."
+    );
+
+    Serial.print(
+      "TEMPORARY: imageId = "
+    );
+
+    Serial.println(
+      outputImageId
+    );
+
+    Serial.println(
+      "TEMPORARY: escolhendo YEARLY mais recente."
+    );
+
+    return true;
+  }
+
+  // =========================================================
+  // NENHUMA TEMPORARIA
+  // =========================================================
+
+  Serial.println(
+    "TEMPORARY: nenhuma foto temporária válida."
+  );
+
+  return false;
+}
+
+
+// ============================================================
 // ESCOLHER PROXIMA FOTO
 // ============================================================
 
 bool chooseNextPhoto(
   String& outputImageId,
   String& outputEpaperFilePath,
-  const String& priorityCollectionId,
-  const String& priorityImageId,
-  bool hasPriority
+  const String& photosJsonString
 )
 {
   outputImageId = "";
@@ -1070,55 +2426,18 @@ bool chooseNextPhoto(
   // PHOTOS
   // ============================================================
 
-  uint64_t photosFileSize =
-    sd.size("/photos.json");
-
-  if (photosFileSize == 0)
-  {
-    Serial.println(
-      "PHOTOS: /photos.json nao existe ou esta vazio."
-    );
-
-    return false;
-  }
-
-  uint8_t* photosBuffer =
-    new uint8_t[photosFileSize + 1];
-
-  if (!photosBuffer)
-  {
-    Serial.println(
-      "PHOTOS: erro ao alocar memoria."
-    );
-
-    return false;
-  }
-
-  size_t photosBytesRead =
-    sd.read(
-      "/photos.json",
-      photosBuffer,
-      photosFileSize
-    );
-
-  photosBuffer[photosBytesRead] = '\0';
-
   FirebaseJson photosJson;
 
   if (!photosJson.setJsonData(
-        (char*)photosBuffer
+        photosJsonString
       ))
   {
     Serial.println(
-      "PHOTOS: JSON invalido."
+      "PHOTOS: dados de photos invalidos."
     );
-
-    delete[] photosBuffer;
 
     return false;
   }
-
-  delete[] photosBuffer;
 
   FirebaseJsonData collectionsData;
 
@@ -1154,321 +2473,6 @@ bool chooseNextPhoto(
   Serial.println(
     collections.size()
   );
-
-
-  // ============================================================
-  // PRIORIDADE
-  // ============================================================
-
-  if (hasPriority)
-  {
-    Serial.println(
-      "=== PROCESSANDO FOTO PRIORITARIA ==="
-    );
-
-    Serial.print(
-      "Collection ID: "
-    );
-
-    Serial.println(
-      priorityCollectionId
-    );
-
-    Serial.print(
-      "Image ID: "
-    );
-
-    Serial.println(
-      priorityImageId
-    );
-
-    // ----------------------------------------------------------
-    // PROCURAR A COLECAO DA PRIORIDADE
-    // ----------------------------------------------------------
-
-    int priorityCollectionIndex = -1;
-
-    for (
-      size_t i = 0;
-      i < collections.size();
-      i++
-    )
-    {
-      FirebaseJsonData collectionData;
-
-      if (!collections.get(
-            collectionData,
-            i
-          ))
-      {
-        continue;
-      }
-
-      FirebaseJson collection;
-
-      if (!collectionData.getJSON(
-            collection
-          ))
-      {
-        continue;
-      }
-
-      FirebaseJsonData collectionIdData;
-
-      if (!collection.get(
-            collectionIdData,
-            "id"
-          ))
-      {
-        continue;
-      }
-
-      if (
-        collectionIdData.to<String>() ==
-        priorityCollectionId
-      )
-      {
-        priorityCollectionIndex = i;
-        break;
-      }
-    }
-
-    if (priorityCollectionIndex < 0)
-    {
-      Serial.println(
-        "PRIORITY: colecao nao encontrada."
-      );
-
-      return false;
-    }
-
-    FirebaseJsonData priorityCollectionData;
-
-    if (!collections.get(
-          priorityCollectionData,
-          priorityCollectionIndex
-        ))
-    {
-      Serial.println(
-        "PRIORITY: erro ao obter colecao."
-      );
-
-      return false;
-    }
-
-    FirebaseJson priorityCollection;
-
-    if (!priorityCollectionData.getJSON(
-          priorityCollection
-        ))
-    {
-      Serial.println(
-        "PRIORITY: erro ao interpretar colecao."
-      );
-
-      return false;
-    }
-
-    // ----------------------------------------------------------
-    // VERIFICAR SE A COLECAO ESTA ATIVA
-    // ----------------------------------------------------------
-
-    FirebaseJsonData priorityCollectionActiveData;
-
-    if (!priorityCollection.get(
-          priorityCollectionActiveData,
-          "active"
-        ))
-    {
-      Serial.println(
-        "PRIORITY: campo active da colecao nao encontrado."
-      );
-
-      return false;
-    }
-
-    if (!priorityCollectionActiveData.to<bool>())
-    {
-      Serial.println(
-        "PRIORITY: colecao esta inativa."
-      );
-
-      return false;
-    }
-
-    // ----------------------------------------------------------
-    // IMAGENS
-    // ----------------------------------------------------------
-
-    FirebaseJsonData priorityImagesData;
-
-    if (!priorityCollection.get(
-          priorityImagesData,
-          "images"
-        ))
-    {
-      Serial.println(
-        "PRIORITY: images nao encontrado."
-      );
-
-      return false;
-    }
-
-    FirebaseJsonArray priorityImages;
-
-    if (!priorityImagesData.getArray(
-          priorityImages
-        ))
-    {
-      Serial.println(
-        "PRIORITY: erro ao ler images."
-      );
-
-      return false;
-    }
-
-    // ----------------------------------------------------------
-    // PROCURAR A IMAGEM
-    // ----------------------------------------------------------
-
-    for (
-      size_t i = 0;
-      i < priorityImages.size();
-      i++
-    )
-    {
-      FirebaseJsonData imageData;
-
-      if (!priorityImages.get(
-            imageData,
-            i
-          ))
-      {
-        continue;
-      }
-
-      FirebaseJson image;
-
-      if (!imageData.getJSON(image))
-      {
-        continue;
-      }
-
-      FirebaseJsonData imageIdData;
-      FirebaseJsonData activeData;
-      FirebaseJsonData widthData;
-      FirebaseJsonData heightData;
-      FirebaseJsonData epaperFilePathData;
-
-      if (!image.get(
-            imageIdData,
-            "id"
-          ))
-      {
-        continue;
-      }
-
-      if (!image.get(
-            activeData,
-            "active"
-          ))
-      {
-        continue;
-      }
-
-      if (!image.get(
-            widthData,
-            "width"
-          ))
-      {
-        continue;
-      }
-
-      if (!image.get(
-            heightData,
-            "height"
-          ))
-      {
-        continue;
-      }
-
-      if (!image.get(
-            epaperFilePathData,
-            "epaperFilePath"
-          ))
-      {
-        continue;
-      }
-
-      String imageId =
-        imageIdData.to<String>();
-
-      if (imageId != priorityImageId)
-      {
-        continue;
-      }
-
-      if (!activeData.to<bool>())
-      {
-        Serial.println(
-          "PRIORITY: imagem esta inativa."
-        );
-
-        return false;
-      }
-
-      if (
-        widthData.to<int>() != requiredWidth ||
-        heightData.to<int>() != requiredHeight
-      )
-      {
-        Serial.println(
-          "PRIORITY: imagem possui dimensao incompatível."
-        );
-
-        return false;
-      }
-
-      outputImageId =
-        imageId;
-
-      outputEpaperFilePath =
-        epaperFilePathData.to<String>();
-
-      stateJson.set(
-        "lastCollectionId",
-        priorityCollectionId
-      );
-
-      Serial.println(
-        "=== FOTO PRIORITARIA ESCOLHIDA ==="
-      );
-
-      Serial.print(
-        "Image ID: "
-      );
-
-      Serial.println(
-        outputImageId
-      );
-
-      Serial.print(
-        "Epaper file path: "
-      );
-
-      Serial.println(
-        outputEpaperFilePath
-      );
-
-      return true;
-    }
-
-    Serial.println(
-      "PRIORITY: imagem nao encontrada."
-    );
-
-    return false;
-  }
 
   // ============================================================
   // ESTADO ATUAL
@@ -1513,9 +2517,6 @@ bool chooseNextPhoto(
 
   int lastCollectionIndex = -1;
 
-
-  // Primeiro encontramos onde esta
-  // a ultima colecao.
   for (size_t i = 0;
        i < collectionCount;
        i++)
@@ -1938,8 +2939,6 @@ bool chooseNextPhoto(
     }
 
 
-    // Nunca exibida:
-    // prioridade maxima.
     if (historyPosition < 0)
     {
       selectedImageIndex = i;
@@ -1950,8 +2949,6 @@ bool chooseNextPhoto(
     }
 
 
-    // Quanto maior o indice no historico,
-    // mais antiga a ultima exibicao.
     if (selectedImageIndex < 0 ||
         historyPosition >
         selectedImageHistoryPosition)
@@ -2068,15 +3065,6 @@ bool chooseNextPhoto(
   );
 
 
-  // IMPORTANTE:
-  //
-  // currentImageId e displayHistory so serao
-  // atualizados depois que o display realmente
-  // mostrar a imagem.
-  //
-  // Portanto nao salvamos o state aqui.
-
-
   // ============================================================
   // RESULTADO
   // ============================================================
@@ -2122,6 +3110,88 @@ bool chooseNextPhoto(
 
 
 // ============================================================
+// CHOOSE DISPLAY PHOTO - choice logic
+// ============================================================
+
+bool chooseDisplayPhoto(
+  String& outputImageId,
+  String& outputEpaperFilePath,
+  const String& priorityCollectionId,
+  const String& priorityImageId,
+  bool hasPriority,
+  bool& outputIsTemporary,
+  const String& photosJson,
+  const String& temporaryPhotosJson
+)
+{
+  outputImageId = "";
+  outputEpaperFilePath = "";
+  outputIsTemporary = false;
+
+  Serial.println(
+    "=== CHOOSE DISPLAY PHOTO ==="
+  );
+
+  // PRIORIDADE
+  if (choosePriorityPhoto(
+        outputImageId,
+        outputEpaperFilePath,
+        priorityCollectionId,
+        priorityImageId,
+        hasPriority,
+        photosJson
+      ))
+  {
+    Serial.println(
+      "DISPLAY: usando foto PRIORITARIA."
+    );
+
+    return true;
+  }
+
+  // TEMPORARIA
+  if (chooseTemporaryPhoto(
+        outputImageId,
+        outputEpaperFilePath,
+        temporaryPhotosJson
+      ))
+  {
+    outputIsTemporary = true;
+
+    Serial.println(
+      "DISPLAY: usando foto TEMPORARIA."
+    );
+
+    return true;
+  }
+
+  // NORMAL
+  Serial.println(
+    "DISPLAY: nenhuma prioridade ou temporaria valida."
+  );
+
+  if (chooseNextPhoto(
+        outputImageId,
+        outputEpaperFilePath,
+        photosJson
+      ))
+  {
+    Serial.println(
+      "DISPLAY: usando foto NORMAL."
+    );
+
+    return true;
+  }
+
+  Serial.println(
+    "DISPLAY: nenhuma foto disponivel."
+  );
+
+  return false;
+}
+
+
+// ============================================================
 // ROTINAS PRINCIPAIS SYNC, NEXT, INFO, WIFI
 // ============================================================
 
@@ -2136,22 +3206,18 @@ void sync()
   // WI-FI
   // ============================================================
 
-  WiFi.begin(
-    WIFI_SSID,
-    WIFI_PASSWORD
+  Serial.println(
+    "Conectando ao Wi-Fi salvo..."
   );
 
-  Serial.print(
-    "Conectando ao Wi-Fi"
-  );
-
-  while (WiFi.status() != WL_CONNECTED)
+  if (!wifiManager.connectToSavedWiFi())
   {
-    delay(500);
-    Serial.print(".");
-  }
+    Serial.println(
+      "ERRO: nao foi possivel conectar ao Wi-Fi salvo."
+    );
 
-  Serial.println();
+    return;
+  }
 
   Serial.println(
     "Wi-Fi conectado."
@@ -2196,26 +3262,28 @@ void sync()
   );
 
   if (!sd.begin(Serial))
-    {
-      Serial.println(
-        "ERRO: não foi possível inicializar o SD."
-      );
+  {
+    Serial.println(
+      "ERRO: nao foi possivel inicializar o SD."
+    );
 
-      return;
-    }
+    return;
+  }
+
 
   // ============================================================
   // LOAD STATE
   // ============================================================
 
   if (!loadState())
-    {
-      Serial.println(
-        "ERRO: nao foi possivel carregar state."
-      );
+  {
+    Serial.println(
+      "ERRO: nao foi possivel carregar state."
+    );
 
-      return;
+    return;
   }
+
 
   // ============================================================
   // FIREBASE
@@ -2294,26 +3362,14 @@ void sync()
     return;
   }
 
-  if (sd.exists("/photos.json"))
-    sd.remove("/photos.json");
-
-  if (!sd.write(
-        "/photos.json",
-        (const uint8_t*)photosJson.c_str(),
-        photosJson.length()
-      ))
-  {
-    Serial.println(
-      "ERRO: não foi possível salvar /photos.json."
-    );
-
-    return;
-  }
-
   Serial.println(
-    "photos.json salvo no SD."
+    "PHOTOS: dados mantidos em RAM."
   );
 
+
+  // ============================================================
+  // PRIORIDADE
+  // ============================================================
 
   String priorityCollectionId;
   String priorityImageId;
@@ -2333,23 +3389,82 @@ void sync()
     return;
   }
 
+
+  // ============================================================
+  // FIRESTORE - TEMP PHOTOS
+  // ============================================================
+
+  Serial.println();
+
+  Serial.println(
+    "=== SINCRONIZANDO TEMP PHOTOS ==="
+  );
+
+  String temporaryPhotosJson;
+
+  if (!firebase.syncTemporaryPhotos(
+        deviceId.c_str(),
+        temporaryPhotosJson
+      ))
+  {
+    Serial.println(
+      "ERRO: não foi possível sincronizar temp photos."
+    );
+
+    return;
+  }
+
+  Serial.println(
+    "TEMP PHOTOS: dados mantidos em RAM."
+  );
+
+
+  // ============================================================
+  // REMOVER CACHES ANTIGOS
+  // ============================================================
+
+  if (sd.exists("/photos.json"))
+  {
+    if (sd.remove("/photos.json"))
+    {
+      Serial.println(
+        "Removido /photos.json antigo."
+      );
+    }
+  }
+
+  if (sd.exists("/temporaryPhotos.json"))
+  {
+    if (sd.remove("/temporaryPhotos.json"))
+    {
+      Serial.println(
+        "Removido /temporaryPhotos.json antigo."
+      );
+    }
+  }
+
+
   // ============================================================
   // ESCOLHER FOTO
   // ============================================================
 
   String imageId;
   String epaperFilePath;
+  bool isTemporary = false;
 
-  if (!chooseNextPhoto(
+  if (!chooseDisplayPhoto(
         imageId,
         epaperFilePath,
         priorityCollectionId,
         priorityImageId,
-        hasPriority
+        hasPriority,
+        isTemporary,
+        photosJson,
+        temporaryPhotosJson
       ))
   {
     Serial.println(
-      "ERRO: nao foi possivel escolher a proxima foto."
+      "SYNC: nenhuma foto disponivel."
     );
 
     return;
@@ -2360,7 +3475,7 @@ void sync()
   // MOSTRAR FOTO
   // ============================================================
 
-  if (!showCurrentPhoto(
+  if (!showPhoto(
         imageId,
         epaperFilePath
       ))
@@ -2370,6 +3485,38 @@ void sync()
     );
 
     return;
+  }
+
+
+  // ============================================================
+  // CONSUMIR FOTO TEMPORARIA
+  // ============================================================
+
+  if (isTemporary)
+  {
+    Serial.println(
+      "TEMPORARY: foto temporaria exibida."
+    );
+
+    Serial.println(
+      "TEMPORARY: marcando como consumida."
+    );
+
+    String consumedAt = getCurrentTimestamp();
+
+    if (!firebase.markTemporaryPhotoConsumed(
+          deviceId.c_str(),
+          imageId.c_str(),
+          consumedAt.c_str()
+        ))
+    {
+      Serial.println("SYNC: erro ao marcar temporary como consumida.");
+      return;
+    }
+
+    Serial.println(
+      "TEMPORARY: foto marcada como consumida."
+    );
   }
 
 
@@ -2435,7 +3582,7 @@ void sync()
 
     return;
   }
-  
+
 
   // ============================================================
   // FINAL
@@ -2461,10 +3608,220 @@ void info()
     "=== INFO ==="
   );
 
-  // TODO:
-  // - identificar a foto atual
-  // - ler a descricao local
-  // - mostrar a descricao no e-paper
+
+  // ============================================================
+  // WI-FI
+  // ============================================================
+
+  Serial.println(
+    "INFO: conectando ao Wi-Fi salvo..."
+  );
+
+  if (!wifiManager.connectToSavedWiFi())
+  {
+    Serial.println(
+      "INFO: nao foi possivel conectar ao Wi-Fi."
+    );
+
+    return;
+  }
+
+  Serial.println(
+    "INFO: Wi-Fi conectado."
+  );
+
+
+  // ============================================================
+  // HORARIO
+  // ============================================================
+
+  if (!syncClock())
+  {
+    return;
+  }
+
+
+  // ============================================================
+  // INICIALIZAR SD
+  // ============================================================
+
+  if (!sd.begin(Serial))
+  {
+    Serial.println(
+      "INFO: nao foi possivel inicializar o SD."
+    );
+
+    return;
+  }
+
+
+  // ============================================================
+  // CARREGAR STATE
+  // ============================================================
+
+  if (!loadState())
+  {
+    Serial.println(
+      "INFO: nao foi possivel carregar state."
+    );
+
+    return;
+  }
+
+
+  // ============================================================
+  // FIREBASE
+  // ============================================================
+
+  firebase.begin(
+    API_KEY,
+    STORAGE_BUCKET_ID,
+    Serial
+  );
+
+  if (!firebase.authenticate())
+  {
+    Serial.println(
+      "INFO: autenticacao Firebase falhou."
+    );
+
+    return;
+  }
+
+
+  // ============================================================
+  // PHOTOS
+  // ============================================================
+
+  String deviceId =
+    WiFi.macAddress();
+
+  String photosJson;
+
+  Serial.println(
+    "INFO: sincronizando photos..."
+  );
+
+  if (!firebase.syncPhotos(
+        deviceId.c_str(),
+        photosJson
+      ))
+  {
+    Serial.println(
+      "INFO: nao foi possivel sincronizar photos."
+    );
+
+    return;
+  }
+
+  Serial.println(
+    "INFO: photos sincronizadas em RAM."
+  );
+
+
+  // ============================================================
+  // OBTER DESCRICAO
+  // ============================================================
+
+  String description;
+
+  if (!getCurrentImageDescription(
+        description,
+        photosJson
+      ))
+  {
+    description =
+      "Esta imagem nao tem descricao.";
+  }
+
+
+  // ============================================================
+  // MOSTRAR DESCRICAO
+  // ============================================================
+
+  if (!displayTextScreen(
+        description
+      ))
+  {
+    Serial.println(
+      "INFO: nao foi possivel mostrar descricao."
+    );
+
+    return;
+  }
+
+
+  // ============================================================
+  // AGUARDAR 3 MINUTOS
+  // ============================================================
+
+  Serial.println(
+    "INFO: descricao exibida."
+  );
+
+  Serial.println(
+    "INFO: aguardando 3 minutos antes de restaurar a imagem."
+  );
+
+  delay(displayRatePeriod * 1000);
+
+
+  // ============================================================
+  // OBTER NOVAMENTE A IMAGEM ATUAL
+  // ============================================================
+
+  FirebaseJsonData currentImageData;
+
+  if (!stateJson.get(
+        currentImageData,
+        "currentImageId"
+      ))
+  {
+    Serial.println(
+      "INFO: currentImageId nao encontrado."
+    );
+
+    return;
+  }
+
+  String currentImageId =
+    currentImageData.to<String>();
+
+  if (currentImageId.length() == 0)
+  {
+    Serial.println(
+      "INFO: nenhuma imagem atual."
+    );
+
+    return;
+  }
+
+
+  // ============================================================
+  // RESTAURAR IMAGEM
+  // ============================================================
+
+  String imagePath =
+    "/" + currentImageId + ".bin";
+
+  Serial.println(
+    "INFO: restaurando imagem original."
+  );
+
+  if (!displayImageFromSD(
+        imagePath.c_str()
+      ))
+  {
+    Serial.println(
+      "INFO: nao foi possivel restaurar a imagem."
+    );
+
+    return;
+  }
+
+  Serial.println(
+    "INFO: imagem original restaurada."
+  );
 }
 
 
@@ -2485,6 +3842,7 @@ void wifi()
     sync();
   }
 }
+
 
 // ============================================================
 // SETUP
@@ -2664,9 +4022,9 @@ void setup()
           "SYNC"
         );
 
-        sync();
-
         actionDetected = true;
+
+        sync();
       }
 
       else if (
@@ -2678,9 +4036,9 @@ void setup()
           "NEXT"
         );
 
-        next();
-
         actionDetected = true;
+
+        next();
       }
 
       else if (
@@ -2692,9 +4050,9 @@ void setup()
           "INFO"
         );
 
-        info();
-
         actionDetected = true;
+
+        info();
       }
 
       else if (
@@ -2706,14 +4064,14 @@ void setup()
           "WIFI"
         );
 
-        wifi();
-
         actionDetected = true;
+
+        wifi();
       }
 
       if (
-        millis() - startTime >=
-        10000
+        !actionDetected &&
+        millis() - startTime >= 10000
       )
       {
         Serial.println(
@@ -2748,15 +4106,24 @@ void setup()
     updateIntervalMinutes = 120;
   }
 
+  uint32_t sleepMinutes =
+    updateIntervalMinutes;
+
+  if (nextSleepMinutes > 0)
+  {
+    sleepMinutes =
+      nextSleepMinutes;
+  }
+
   Serial.println();
   Serial.println(
     "Entrando em deep sleep por " +
-    String(updateIntervalMinutes) +
+    String(sleepMinutes) +
     " minutos..."
   );
 
   esp_sleep_enable_timer_wakeup(
-    (uint64_t)updateIntervalMinutes * 60ULL * 1000000ULL
+    (uint64_t)sleepMinutes * 60ULL * 1000000ULL
   );
 
   delay(500);
