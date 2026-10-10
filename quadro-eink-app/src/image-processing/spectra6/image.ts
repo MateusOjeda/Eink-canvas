@@ -99,14 +99,16 @@ export function adjustImageRgba(
 	pixels: Uint8Array,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ): Uint8Array {
-	if (brightness === 0 && saturation === 100) {
+	if (brightness === 0 && saturation === 100 && contrast === 100) {
 		return pixels;
 	}
 
 	const adjusted = Uint8Array.from(pixels);
 	const brightnessOffset = brightness * 2.55;
 	const saturationFactor = saturation / 100;
+	const contrastFactor = contrast / 100;
 
 	for (let i = 0; i < adjusted.length; i += 4) {
 		const r = adjusted[i];
@@ -118,23 +120,46 @@ export function adjustImageRgba(
 		const brightG = Math.max(0, Math.min(255, g + brightnessOffset));
 		const brightB = Math.max(0, Math.min(255, b + brightnessOffset));
 
+		// Contraste
+		const contrastR = Math.max(
+			0,
+			Math.min(255, (brightR - 128) * contrastFactor + 128),
+		);
+		const contrastG = Math.max(
+			0,
+			Math.min(255, (brightG - 128) * contrastFactor + 128),
+		);
+		const contrastB = Math.max(
+			0,
+			Math.min(255, (brightB - 128) * contrastFactor + 128),
+		);
+
 		// Saturação baseada na luminância percebida
 		const luminance =
-			0.2126 * brightR + 0.7152 * brightG + 0.0722 * brightB;
+			0.2126 * contrastR + 0.7152 * contrastG + 0.0722 * contrastB;
 
 		adjusted[i] = Math.max(
 			0,
-			Math.min(255, luminance + (brightR - luminance) * saturationFactor),
+			Math.min(
+				255,
+				luminance + (contrastR - luminance) * saturationFactor,
+			),
 		);
 
 		adjusted[i + 1] = Math.max(
 			0,
-			Math.min(255, luminance + (brightG - luminance) * saturationFactor),
+			Math.min(
+				255,
+				luminance + (contrastG - luminance) * saturationFactor,
+			),
 		);
 
 		adjusted[i + 2] = Math.max(
 			0,
-			Math.min(255, luminance + (brightB - luminance) * saturationFactor),
+			Math.min(
+				255,
+				luminance + (contrastB - luminance) * saturationFactor,
+			),
 		);
 	}
 
@@ -147,8 +172,14 @@ export async function createAdjustedPreview(
 	height: number,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ): Promise<Uint8Array> {
-	const adjustedPixels = adjustImageRgba(pixels, brightness, saturation);
+	const adjustedPixels = adjustImageRgba(
+		pixels,
+		brightness,
+		saturation,
+		contrast,
+	);
 
 	const image = Skia.Image.MakeImage(
 		{
@@ -172,6 +203,7 @@ export async function saveAdjustedImage(
 	uri: string,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ): Promise<string> {
 	const { pixels, width, height } = await loadImageRgba(uri);
 
@@ -181,6 +213,7 @@ export async function saveAdjustedImage(
 		height,
 		brightness,
 		saturation,
+		contrast,
 	);
 
 	const file = new File(

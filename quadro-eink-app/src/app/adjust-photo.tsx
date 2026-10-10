@@ -65,6 +65,7 @@ export default function AdjustPhotoScreen() {
 
 	const [brightness, setBrightness] = useState(0);
 	const [saturation, setSaturation] = useState(100);
+	const [contrast, setContrast] = useState(100);
 
 	const [algorithm, setAlgorithm] = useState<Spectra6Algorithm>(
 		"good-display-floyd-steinberg",
@@ -106,6 +107,7 @@ export default function AdjustPhotoScreen() {
 				height,
 				brightness,
 				saturation,
+				contrast,
 			);
 
 			if (requestId !== previewRequestId.current) return;
@@ -137,10 +139,10 @@ export default function AdjustPhotoScreen() {
 				setIsUpdatingPreview(false);
 			}
 		}
-	}, [uri, brightness, saturation]);
+	}, [uri, brightness, saturation, contrast]);
 
 	useEffect(() => {
-		if (brightness === 0 && saturation === 100) {
+		if (brightness === 0 && saturation === 100 && contrast === 100) {
 			previewRequestId.current++;
 			setPreviewUri(uri);
 			setIsUpdatingPreview(false);
@@ -156,7 +158,7 @@ export default function AdjustPhotoScreen() {
 		}, 150);
 
 		return () => clearTimeout(timeout);
-	}, [uri, brightness, saturation, updatePreview]);
+	}, [uri, brightness, saturation, contrast, updatePreview]);
 
 	useEffect(() => {
 		return () => {
@@ -176,6 +178,7 @@ export default function AdjustPhotoScreen() {
 				params.orientation,
 				brightness,
 				saturation,
+				contrast,
 			);
 
 			if (photoMode === "temporary") {
@@ -201,6 +204,7 @@ export default function AdjustPhotoScreen() {
 				uri,
 				brightness,
 				saturation,
+				contrast,
 			);
 
 			const thumbnail = await createThumbnail(
@@ -347,6 +351,33 @@ export default function AdjustPhotoScreen() {
 					<View style={styles.rangeLabels}>
 						<Text style={styles.rangeText}>Sem cor</Text>
 						<Text style={styles.rangeText}>Mais intensa</Text>
+					</View>
+				</View>
+
+				<View style={styles.controlSection}>
+					<View style={styles.labelRow}>
+						<Text style={styles.controlLabel}>Contraste</Text>
+
+						<Text style={styles.value}>{contrast}%</Text>
+					</View>
+
+					<Slider
+						minimumValue={0}
+						maximumValue={200}
+						step={1}
+						value={contrast}
+						onValueChange={(value) => {
+							setContrast(value);
+							setIsUpdatingPreview(true);
+						}}
+						minimumTrackTintColor={colors.primary}
+						maximumTrackTintColor={colors.border}
+						thumbTintColor={colors.primary}
+					/>
+
+					<View style={styles.rangeLabels}>
+						<Text style={styles.rangeText}>Menos contraste</Text>
+						<Text style={styles.rangeText}>Mais contraste</Text>
 					</View>
 				</View>
 

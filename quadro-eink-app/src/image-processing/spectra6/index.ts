@@ -21,12 +21,18 @@ async function processSpectra6(
 	orientation: DisplayOrientation,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ) {
 	const totalStart = Date.now();
 
 	const { pixels: originalPixels, width, height } = await loadImageRgba(uri);
 
-	const pixels = adjustImageRgba(originalPixels, brightness, saturation);
+	const pixels = adjustImageRgba(
+		originalPixels,
+		brightness,
+		saturation,
+		contrast,
+	);
 
 	const quantizeStart = Date.now();
 
@@ -66,6 +72,7 @@ function convertToSpectra6Nearest(
 	orientation: DisplayOrientation,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ) {
 	return processSpectra6(
 		uri,
@@ -75,6 +82,7 @@ function convertToSpectra6Nearest(
 		orientation,
 		brightness,
 		saturation,
+		contrast,
 	);
 }
 
@@ -83,6 +91,7 @@ function convertToSpectra6FloydSteinberg(
 	orientation: DisplayOrientation,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ) {
 	return processSpectra6(
 		uri,
@@ -92,6 +101,7 @@ function convertToSpectra6FloydSteinberg(
 		orientation,
 		brightness,
 		saturation,
+		contrast,
 	);
 }
 
@@ -100,6 +110,7 @@ function convertToSpectra6FloydSteinbergOklabSerpentine(
 	orientation: DisplayOrientation,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ) {
 	return processSpectra6(
 		uri,
@@ -109,6 +120,7 @@ function convertToSpectra6FloydSteinbergOklabSerpentine(
 		orientation,
 		brightness,
 		saturation,
+		contrast,
 	);
 }
 
@@ -117,6 +129,7 @@ function convertToSpectra6BarycentricBlueNoise(
 	orientation: DisplayOrientation,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ) {
 	return processSpectra6(
 		uri,
@@ -126,6 +139,7 @@ function convertToSpectra6BarycentricBlueNoise(
 		orientation,
 		brightness,
 		saturation,
+		contrast,
 	);
 }
 
@@ -134,6 +148,7 @@ function convertToSpectra6BarycentricBlueNoiseCompensated(
 	orientation: DisplayOrientation,
 	brightness: number,
 	saturation: number,
+	contrast: number,
 ) {
 	return processSpectra6(
 		uri,
@@ -143,6 +158,7 @@ function convertToSpectra6BarycentricBlueNoiseCompensated(
 		orientation,
 		brightness,
 		saturation,
+		contrast,
 	);
 }
 
@@ -152,6 +168,7 @@ export function convertToSpectra6(
 	orientation: DisplayOrientation,
 	brightness = 0,
 	saturation = 100,
+	contrast = 100,
 ) {
 	switch (algorithm) {
 		case "nearest-rgb":
@@ -160,6 +177,7 @@ export function convertToSpectra6(
 				orientation,
 				brightness,
 				saturation,
+				contrast,
 			);
 
 		case "floyd-steinberg-rgb":
@@ -168,6 +186,7 @@ export function convertToSpectra6(
 				orientation,
 				brightness,
 				saturation,
+				contrast,
 			);
 
 		case "floyd-steinberg-oklab-serpentine":
@@ -176,6 +195,7 @@ export function convertToSpectra6(
 				orientation,
 				brightness,
 				saturation,
+				contrast,
 			);
 
 		case "barycentric-blue-noise":
@@ -184,6 +204,7 @@ export function convertToSpectra6(
 				orientation,
 				brightness,
 				saturation,
+				contrast,
 			);
 
 		case "barycentric-blue-noise-compensated":
@@ -192,6 +213,7 @@ export function convertToSpectra6(
 				orientation,
 				brightness,
 				saturation,
+				contrast,
 			);
 
 		case "good-display-floyd-steinberg":
@@ -200,6 +222,7 @@ export function convertToSpectra6(
 				orientation,
 				brightness,
 				saturation,
+				contrast,
 			);
 	}
 }

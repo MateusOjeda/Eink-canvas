@@ -427,12 +427,18 @@ export async function convertToSpectra6GoodDisplayFloydSteinberg(
 	orientation: DisplayOrientation,
 	brightness = 0,
 	saturation = 100,
+	contrast = 0,
 ) {
 	const totalStart = Date.now();
 
 	const { width, height, pixels } = await loadImageRgba(uri);
 
-	const adjustedPixels = adjustImageRgba(pixels, brightness, saturation);
+	const adjustedPixels = adjustImageRgba(
+		pixels,
+		brightness,
+		saturation,
+		contrast,
+	);
 
 	const quantizeStart = Date.now();
 
