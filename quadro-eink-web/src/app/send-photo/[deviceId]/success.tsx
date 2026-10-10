@@ -32,7 +32,7 @@ export default function SuccessScreen() {
 						<Feather name="check" size={34} color="#2F6E5D" />
 					</View>
 
-					<Text style={styles.successTitle}>Foto enviada</Text>
+					<Text style={styles.successTitle}>Impressão enviada</Text>
 
 					<Text style={styles.successDescription}>
 						A foto agendada foi enviada
@@ -67,7 +67,7 @@ export default function SuccessScreen() {
 								</Text>
 
 								<Text style={styles.deviceMeta}>
-									Foto agendada enviada com sucesso
+									Agendamento enviado com sucesso
 								</Text>
 							</View>
 						</View>
@@ -84,7 +84,7 @@ export default function SuccessScreen() {
 
 						<View style={styles.infoContent}>
 							<Text style={styles.infoTitle}>
-								Aguardando sincronização
+								Dispositivo pronto para sincronizar
 							</Text>
 
 							<Text style={styles.infoText}>

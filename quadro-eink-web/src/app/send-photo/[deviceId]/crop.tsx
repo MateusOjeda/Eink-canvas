@@ -459,7 +459,7 @@ export default function CropPhotoScreen() {
 					<Text
 						style={[styles.title, compact && styles.titleCompact]}
 					>
-						Enviar foto
+						Imprimir foto
 					</Text>
 				</View>
 

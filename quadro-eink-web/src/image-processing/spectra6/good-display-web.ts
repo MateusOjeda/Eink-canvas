@@ -187,6 +187,10 @@ function applyContrast(pixels: Uint8ClampedArray) {
 	}
 }
 
+function rotate180(paletteIndices: Uint8Array): Uint8Array {
+	return paletteIndices.slice().reverse();
+}
+
 function quantizeGoodDisplayFloydSteinberg(
 	inputPixels: Uint8ClampedArray,
 	width: number,
@@ -447,8 +451,27 @@ export async function convertToSpectra6GoodDisplayWeb({
 		outputHeight,
 	);
 
+	let transformedIndices: Uint8Array;
+
+	if (outputWidth > outputHeight) {
+		// Paisagem: rotação de 180°
+		transformedIndices = rotate180(paletteIndices);
+	} else {
+		// Retrato: mesma transposição usada no aplicativo
+		transformedIndices = new Uint8Array(paletteIndices.length);
+
+		let index = 0;
+
+		for (let x = outputWidth - 1; x >= 0; x--) {
+			for (let y = 0; y < outputHeight; y++) {
+				transformedIndices[index++] =
+					paletteIndices[y * outputWidth + x];
+			}
+		}
+	}
+
 	const binBytes = createSpectra6Binary(
-		paletteIndices,
+		transformedIndices,
 		outputWidth,
 		outputHeight,
 	);

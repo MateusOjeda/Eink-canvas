@@ -140,7 +140,7 @@ export default function HomeScreen() {
 
 					<Text style={styles.authDescription}>
 						Entre com sua conta Google para acessar seus quadros e
-						enviar fotos.
+						imprimir fotos.
 					</Text>
 
 					<Pressable
@@ -310,7 +310,7 @@ export default function HomeScreen() {
 				</View>
 
 				<Text style={styles.description}>
-					Você tem permissão para enviar uma foto agendada para:
+					Você tem permissão para imprimir uma foto agendada em:
 				</Text>
 
 				<View style={styles.deviceList}>
@@ -371,7 +371,7 @@ export default function HomeScreen() {
 								}}
 							>
 								<Text style={styles.deviceButtonText}>
-									Enviar foto
+									Imprimir foto
 								</Text>
 							</Pressable>
 						</View>

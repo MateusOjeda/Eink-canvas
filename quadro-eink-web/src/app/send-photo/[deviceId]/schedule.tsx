@@ -141,7 +141,7 @@ export default function SchedulePhotoScreen() {
 					<Text
 						style={[styles.title, compact && styles.titleCompact]}
 					>
-						Enviar foto
+						Imprimir foto
 					</Text>
 				</View>
 
@@ -152,7 +152,7 @@ export default function SchedulePhotoScreen() {
 						short && styles.descriptionShort,
 					]}
 				>
-					Envie uma foto agendada para{" "}
+					Agende uma impressão para{" "}
 					<Text style={styles.descriptionStrong}>{device.name}</Text>.
 				</Text>
 
@@ -189,7 +189,7 @@ export default function SchedulePhotoScreen() {
 
 					<View style={styles.readyContent}>
 						<Text style={styles.readyTitle}>
-							Foto pronta para envio
+							Foto pronta para imprimir
 						</Text>
 
 						<Text
@@ -307,7 +307,7 @@ export default function SchedulePhotoScreen() {
 							<ActivityIndicator color="#FFFFFF" />
 						) : (
 							<Text style={styles.primaryButtonText}>
-								Enviar foto agendada
+								Agendar impressão
 							</Text>
 						)}
 					</Pressable>

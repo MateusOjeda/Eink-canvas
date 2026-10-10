@@ -98,7 +98,7 @@ export default function PickPhotoScreen() {
 					<Text
 						style={[styles.title, compact && styles.titleCompact]}
 					>
-						Enviar foto
+						Imprimir foto
 					</Text>
 				</View>
 
@@ -146,7 +146,7 @@ export default function PickPhotoScreen() {
 						</Text>
 
 						<Text style={styles.imagePlaceholderText}>
-							Escolha uma foto para enviar ao quadro.
+							Escolha uma foto para imprimir no quadro.
 						</Text>
 					</View>
 				</View>
