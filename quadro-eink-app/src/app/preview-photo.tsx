@@ -33,6 +33,8 @@ import { getPhotoCollection } from "@/firebase/collections";
 
 import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/constants/constants";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 export default function PreviewPhotoScreen() {
 	const params = useLocalSearchParams<{
 		deviceId: string;
@@ -53,6 +55,8 @@ export default function PreviewPhotoScreen() {
 	const [collectionName, setCollectionName] = useState("");
 	const [loadingContext, setLoadingContext] = useState(true);
 	const [showSuccess, setShowSuccess] = useState(false);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	const imageWidth = Number(params.imageWidth);
 	const imageHeight = Number(params.imageHeight);
@@ -218,6 +222,7 @@ export default function PreviewPhotoScreen() {
 						subtitle={subtitle}
 						showBackButton
 						style={styles.header}
+						processing={deviceProcessing}
 					/>
 
 					<Text style={styles.resolution}>

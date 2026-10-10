@@ -39,6 +39,8 @@ import type { Photo } from "@/types/photo";
 import type { Device } from "@/types/device";
 import type { PhotoCollection } from "@/types/photo-collection";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 export default function PhotoScreen() {
 	const { deviceId, collectionId, photoId } = useLocalSearchParams<{
 		deviceId: string;
@@ -67,6 +69,8 @@ export default function PhotoScreen() {
 	const [deleting, setDeleting] = useState(false);
 
 	const [previewUri, setPreviewUri] = useState<string | null>(null);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	useFocusEffect(
 		useCallback(() => {
@@ -268,6 +272,7 @@ export default function PhotoScreen() {
 						.filter(Boolean)
 						.join(" · ")}
 					showBackButton
+					processing={deviceProcessing}
 				/>
 
 				{previewUri ? (

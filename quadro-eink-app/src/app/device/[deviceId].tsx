@@ -28,14 +28,13 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 
 import { colors, radius, spacing, typography } from "@/theme";
 
-import {
-	getDevice,
-	subscribeToDeviceProcessingStatus,
-} from "@/firebase/devices";
+import { getDevice } from "@/firebase/devices";
 import { getCollections, setCollectionActive } from "@/firebase/collections";
 import { getPhotos } from "@/firebase/photos";
 import { getCachedStorageFileUri } from "@/firebase/storage";
 import { deleteCollectionWithPhotos } from "@/firebase/cascade";
+
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
 
 import type { Device } from "@/types/device";
 import type { PhotoCollection } from "@/types/photo-collection";
@@ -63,7 +62,7 @@ export default function DeviceScreen() {
 	const [device, setDevice] = useState<Device | null>(null);
 	const [collections, setCollections] = useState<CollectionListItem[]>([]);
 	const [loading, setLoading] = useState(true);
-	const [deviceProcessing, setDeviceProcessing] = useState(false);
+	const deviceProcessing = useDeviceProcessing();
 
 	const load = useCallback(async () => {
 		try {
@@ -120,14 +119,6 @@ export default function DeviceScreen() {
 		useCallback(() => {
 			load();
 		}, [load]),
-	);
-
-	useFocusEffect(
-		useCallback(() => {
-			return subscribeToDeviceProcessingStatus(deviceId, (processing) => {
-				setDeviceProcessing(processing);
-			});
-		}, [deviceId]),
 	);
 
 	const handleOpenCollection = (collectionId: string) => {

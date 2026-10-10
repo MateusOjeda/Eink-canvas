@@ -28,6 +28,8 @@ import { colors, radius, spacing, typography } from "@/theme";
 import { uploadTemporaryPhoto } from "@/firebase/photos";
 import { getDevice } from "@/firebase/devices";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 type Recurrence = "once" | "yearly";
 
 type YearlyDate = {
@@ -125,6 +127,8 @@ export default function TemporaryPhotoScreen() {
 	);
 
 	const [isSending, setIsSending] = useState(false);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	const previewUri = previewFileName
 		? Paths.join(Paths.cache, previewFileName)
@@ -333,6 +337,7 @@ export default function TemporaryPhotoScreen() {
 					title="Adicionar foto agendada"
 					subtitle={deviceName}
 					showBackButton
+					processing={deviceProcessing}
 				/>
 
 				<Card padding="sm" style={styles.photoCard}>

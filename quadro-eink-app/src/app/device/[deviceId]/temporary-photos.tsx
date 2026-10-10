@@ -34,6 +34,8 @@ import { getCachedStorageFileUri } from "@/firebase/storage";
 import type { TemporaryPhoto } from "@/types/photo";
 import type { DisplayOrientation } from "@/types/display";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 type TemporaryPhotoWithPreview = TemporaryPhoto & {
 	previewUri: string;
 };
@@ -120,6 +122,7 @@ export default function TemporaryPhotosScreen() {
 
 	const [loading, setLoading] = useState(true);
 	const [deletingId, setDeletingId] = useState<string | null>(null);
+	const deviceProcessing = useDeviceProcessing();
 
 	const loadPhotos = useCallback(async () => {
 		if (!deviceId) {
@@ -235,6 +238,7 @@ export default function TemporaryPhotosScreen() {
 					title="Fotos agendadas"
 					subtitle={deviceName}
 					showBackButton
+					processing={deviceProcessing}
 				/>
 
 				<PrimaryButton

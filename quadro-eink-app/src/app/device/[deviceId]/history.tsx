@@ -27,6 +27,8 @@ import type { Device } from "@/types/device";
 import type { Photo, TemporaryPhoto } from "@/types/photo";
 import type { PhotoCollection } from "@/types/photo-collection";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 type HistoryItem = {
 	imageId: string;
 	lastDisplayedAt: string;
@@ -84,6 +86,8 @@ export default function HistoryScreen() {
 	const [device, setDevice] = useState<Device | null>(null);
 	const [history, setHistory] = useState<HistoryItem[]>([]);
 	const [loading, setLoading] = useState(true);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	const load = useCallback(async () => {
 		try {
@@ -207,6 +211,7 @@ export default function HistoryScreen() {
 						title="Histórico"
 						subtitle="Não foi possível carregar este dispositivo."
 						showBackButton
+						processing={deviceProcessing}
 					/>
 				</Screen>
 			</>
@@ -222,6 +227,7 @@ export default function HistoryScreen() {
 					title="Histórico"
 					subtitle={device.name}
 					showBackButton
+					processing={deviceProcessing}
 				/>
 
 				{history.length === 0 ? (

@@ -11,22 +11,15 @@ import {
 	View,
 } from "react-native";
 
-import {
-	router,
-	Stack,
-	useLocalSearchParams,
-} from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 
 import { Screen } from "@/components/layout/Screen";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from "@/theme";
+import { colors, radius, spacing, typography } from "@/theme";
+
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
 
 import {
 	createPhotoCollection,
@@ -37,34 +30,30 @@ import {
 import { getDevice } from "@/firebase/devices";
 
 export default function EditCollectionScreen() {
-	const { deviceId, collectionId } =
-		useLocalSearchParams<{
-			deviceId: string;
-			collectionId?: string;
-		}>();
+	const { deviceId, collectionId } = useLocalSearchParams<{
+		deviceId: string;
+		collectionId?: string;
+	}>();
 
 	const [name, setName] = useState("");
-	const [deviceName, setDeviceName] =
-		useState("");
+	const [deviceName, setDeviceName] = useState("");
 
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	useEffect(() => {
 		let isMounted = true;
 
 		const load = async () => {
 			try {
-				const [device, photoCollection] =
-					await Promise.all([
-						getDevice(deviceId),
-						collectionId
-							? getPhotoCollection(
-									deviceId,
-									collectionId,
-								)
-							: Promise.resolve(null),
-					]);
+				const [device, photoCollection] = await Promise.all([
+					getDevice(deviceId),
+					collectionId
+						? getPhotoCollection(deviceId, collectionId)
+						: Promise.resolve(null),
+				]);
 
 				if (!isMounted) {
 					return;
@@ -72,13 +61,8 @@ export default function EditCollectionScreen() {
 
 				setDeviceName(device?.name ?? "");
 
-				if (
-					collectionId &&
-					!photoCollection
-				) {
-					Alert.alert(
-						"Coleção não encontrada",
-					);
+				if (collectionId && !photoCollection) {
+					Alert.alert("Coleção não encontrada");
 
 					router.back();
 					return;
@@ -90,10 +74,7 @@ export default function EditCollectionScreen() {
 			} catch (error) {
 				console.error(error);
 
-				Alert.alert(
-					"Erro",
-					"Não foi possível carregar a coleção.",
-				);
+				Alert.alert("Erro", "Não foi possível carregar a coleção.");
 			} finally {
 				if (isMounted) {
 					setLoading(false);
@@ -112,10 +93,7 @@ export default function EditCollectionScreen() {
 		const trimmedName = name.trim();
 
 		if (!trimmedName) {
-			Alert.alert(
-				"Nome obrigatório",
-				"Digite um nome para a coleção.",
-			);
+			Alert.alert("Nome obrigatório", "Digite um nome para a coleção.");
 
 			return;
 		}
@@ -130,20 +108,14 @@ export default function EditCollectionScreen() {
 					trimmedName,
 				);
 			} else {
-				await createPhotoCollection(
-					deviceId,
-					trimmedName,
-				);
+				await createPhotoCollection(deviceId, trimmedName);
 			}
 
 			router.back();
 		} catch (error) {
 			console.error(error);
 
-			Alert.alert(
-				"Erro",
-				"Não foi possível salvar a coleção.",
-			);
+			Alert.alert("Erro", "Não foi possível salvar a coleção.");
 		} finally {
 			setSaving(false);
 		}
@@ -152,9 +124,7 @@ export default function EditCollectionScreen() {
 	if (loading) {
 		return (
 			<>
-				<Stack.Screen
-					options={{ headerShown: false }}
-				/>
+				<Stack.Screen options={{ headerShown: false }} />
 
 				<Screen>
 					<View style={styles.loading}>
@@ -170,48 +140,33 @@ export default function EditCollectionScreen() {
 
 	return (
 		<>
-			<Stack.Screen
-				options={{ headerShown: false }}
-			/>
+			<Stack.Screen options={{ headerShown: false }} />
 
 			<KeyboardAvoidingView
 				style={styles.keyboardView}
-				behavior={
-					Platform.OS === "ios"
-						? "padding"
-						: "height"
-				}
+				behavior={Platform.OS === "ios" ? "padding" : "height"}
 			>
 				<Screen
 					scroll
-					contentContainerStyle={
-						styles.screenContent
-					}
+					contentContainerStyle={styles.screenContent}
 					keyboardShouldPersistTaps="handled"
 				>
 					<ScreenHeader
-						title={
-							collectionId
-								? "Editar coleção"
-								: "Nova coleção"
-						}
+						title={collectionId ? "Editar coleção" : "Nova coleção"}
 						subtitle={deviceName}
 						showBackButton
 						style={styles.header}
+						processing={deviceProcessing}
 					/>
 
 					<View style={styles.form}>
-						<Text style={styles.label}>
-							Nome da coleção
-						</Text>
+						<Text style={styles.label}>Nome da coleção</Text>
 
 						<TextInput
 							value={name}
 							onChangeText={setName}
 							placeholder="Ex.: Família"
-							placeholderTextColor={
-								colors.textMuted
-							}
+							placeholderTextColor={colors.textMuted}
 							autoFocus
 							returnKeyType="done"
 							onSubmitEditing={save}
@@ -222,13 +177,8 @@ export default function EditCollectionScreen() {
 							title="Salvar coleção"
 							onPress={save}
 							loading={saving}
-							disabled={
-								!name.trim() ||
-								saving
-							}
-							style={
-								styles.saveButton
-							}
+							disabled={!name.trim() || saving}
+							style={styles.saveButton}
 						/>
 					</View>
 				</Screen>

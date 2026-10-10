@@ -94,3 +94,101 @@ export function savePalettePreview(
 		height,
 	};
 }
+
+export function adjustImageRgba(
+	pixels: Uint8Array,
+	brightness: number,
+	saturation: number,
+): Uint8Array {
+	if (brightness === 0 && saturation === 100) {
+		return pixels;
+	}
+
+	const adjusted = Uint8Array.from(pixels);
+	const brightnessOffset = brightness * 2.55;
+	const saturationFactor = saturation / 100;
+
+	for (let i = 0; i < adjusted.length; i += 4) {
+		const r = adjusted[i];
+		const g = adjusted[i + 1];
+		const b = adjusted[i + 2];
+
+		// Brilho
+		const brightR = Math.max(0, Math.min(255, r + brightnessOffset));
+		const brightG = Math.max(0, Math.min(255, g + brightnessOffset));
+		const brightB = Math.max(0, Math.min(255, b + brightnessOffset));
+
+		// Saturação baseada na luminância percebida
+		const luminance =
+			0.2126 * brightR + 0.7152 * brightG + 0.0722 * brightB;
+
+		adjusted[i] = Math.max(
+			0,
+			Math.min(255, luminance + (brightR - luminance) * saturationFactor),
+		);
+
+		adjusted[i + 1] = Math.max(
+			0,
+			Math.min(255, luminance + (brightG - luminance) * saturationFactor),
+		);
+
+		adjusted[i + 2] = Math.max(
+			0,
+			Math.min(255, luminance + (brightB - luminance) * saturationFactor),
+		);
+	}
+
+	return adjusted;
+}
+
+export async function createAdjustedPreview(
+	pixels: Uint8Array,
+	width: number,
+	height: number,
+	brightness: number,
+	saturation: number,
+): Promise<Uint8Array> {
+	const adjustedPixels = adjustImageRgba(pixels, brightness, saturation);
+
+	const image = Skia.Image.MakeImage(
+		{
+			width,
+			height,
+			colorType: ColorType.RGBA_8888,
+			alphaType: AlphaType.Unpremul,
+		},
+		Skia.Data.fromBytes(adjustedPixels),
+		width * 4,
+	);
+
+	if (!image) {
+		throw new Error("Não foi possível criar a imagem da prévia.");
+	}
+
+	return image.encodeToBytes(ImageFormat.JPEG, 85);
+}
+
+export async function saveAdjustedImage(
+	uri: string,
+	brightness: number,
+	saturation: number,
+): Promise<string> {
+	const { pixels, width, height } = await loadImageRgba(uri);
+
+	const jpegBytes = await createAdjustedPreview(
+		pixels,
+		width,
+		height,
+		brightness,
+		saturation,
+	);
+
+	const file = new File(
+		Paths.cache,
+		`adjusted-thumbnail-source-${Date.now()}.jpg`,
+	);
+
+	await file.write(jpegBytes);
+
+	return file.uri;
+}

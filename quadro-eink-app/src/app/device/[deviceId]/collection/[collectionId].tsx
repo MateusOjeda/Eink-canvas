@@ -35,6 +35,8 @@ import type { Photo } from "@/types/photo";
 import type { Device } from "@/types/device";
 import type { DeviceState } from "@/firebase/devices";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 type PhotoWithThumbnail = {
 	photo: Photo;
 	thumbnailUri: string;
@@ -78,6 +80,8 @@ export default function CollectionScreen() {
 	const [photos, setPhotos] = useState<PhotoWithThumbnail[]>([]);
 
 	const [loading, setLoading] = useState(true);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	useFocusEffect(
 		useCallback(() => {
@@ -173,6 +177,7 @@ export default function CollectionScreen() {
 							: getPhotoCountLabel(photos.length)
 					}
 					showBackButton
+					processing={deviceProcessing}
 				/>
 
 				<PrimaryButton

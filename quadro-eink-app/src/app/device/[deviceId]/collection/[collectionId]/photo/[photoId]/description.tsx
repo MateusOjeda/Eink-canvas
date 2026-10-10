@@ -11,75 +11,49 @@ import {
 	View,
 } from "react-native";
 
-import {
-	router,
-	Stack,
-	useLocalSearchParams,
-} from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 
 import { Screen } from "@/components/layout/Screen";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from "@/theme";
+import { colors, radius, spacing, typography } from "@/theme";
 
-import {
-	getPhoto,
-	updatePhotoDescription,
-} from "@/firebase/photos";
+import { getPhoto, updatePhotoDescription } from "@/firebase/photos";
 
 import { getDevice } from "@/firebase/devices";
 import { getPhotoCollection } from "@/firebase/collections";
 
 import { MAX_PHOTO_DESCRIPTION_LENGTH } from "@/constants/constants";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 export default function PhotoDescriptionScreen() {
-	const {
-		deviceId,
-		collectionId,
-		photoId,
-	} = useLocalSearchParams<{
+	const { deviceId, collectionId, photoId } = useLocalSearchParams<{
 		deviceId: string;
 		collectionId: string;
 		photoId: string;
 	}>();
 
-	const [description, setDescription] =
-		useState("");
+	const [description, setDescription] = useState("");
 
-	const [deviceName, setDeviceName] =
-		useState("");
-	const [collectionName, setCollectionName] =
-		useState("");
+	const [deviceName, setDeviceName] = useState("");
+	const [collectionName, setCollectionName] = useState("");
 
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	useEffect(() => {
 		let isMounted = true;
 
 		const load = async () => {
 			try {
-				const [
-					photo,
-					device,
-					collection,
-				] = await Promise.all([
-					getPhoto(
-						deviceId,
-						collectionId,
-						photoId,
-					),
+				const [photo, device, collection] = await Promise.all([
+					getPhoto(deviceId, collectionId, photoId),
 					getDevice(deviceId),
-					getPhotoCollection(
-						deviceId,
-						collectionId,
-					),
+					getPhotoCollection(deviceId, collectionId),
 				]);
 
 				if (!isMounted) {
@@ -87,32 +61,20 @@ export default function PhotoDescriptionScreen() {
 				}
 
 				if (!photo) {
-					Alert.alert(
-						"Foto não encontrada",
-					);
+					Alert.alert("Foto não encontrada");
 
 					router.back();
 					return;
 				}
 
-				setDescription(
-					photo.description ?? "",
-				);
+				setDescription(photo.description ?? "");
 
 				setDeviceName(device?.name ?? "");
-				setCollectionName(
-					collection?.name ?? "",
-				);
+				setCollectionName(collection?.name ?? "");
 			} catch (error) {
-				console.error(
-					"Erro ao carregar descrição:",
-					error,
-				);
+				console.error("Erro ao carregar descrição:", error);
 
-				Alert.alert(
-					"Erro",
-					"Não foi possível carregar a descrição.",
-				);
+				Alert.alert("Erro", "Não foi possível carregar a descrição.");
 			} finally {
 				if (isMounted) {
 					setLoading(false);
@@ -125,17 +87,10 @@ export default function PhotoDescriptionScreen() {
 		return () => {
 			isMounted = false;
 		};
-	}, [
-		deviceId,
-		collectionId,
-		photoId,
-	]);
+	}, [deviceId, collectionId, photoId]);
 
 	const subtitle = useMemo(
-		() =>
-			[collectionName, deviceName]
-				.filter(Boolean)
-				.join(" · "),
+		() => [collectionName, deviceName].filter(Boolean).join(" · "),
 		[collectionName, deviceName],
 	);
 
@@ -152,15 +107,9 @@ export default function PhotoDescriptionScreen() {
 
 			router.back();
 		} catch (error) {
-			console.error(
-				"Erro ao salvar descrição:",
-				error,
-			);
+			console.error("Erro ao salvar descrição:", error);
 
-			Alert.alert(
-				"Erro",
-				"Não foi possível salvar a descrição.",
-			);
+			Alert.alert("Erro", "Não foi possível salvar a descrição.");
 		} finally {
 			setSaving(false);
 		}
@@ -169,9 +118,7 @@ export default function PhotoDescriptionScreen() {
 	if (loading) {
 		return (
 			<>
-				<Stack.Screen
-					options={{ headerShown: false }}
-				/>
+				<Stack.Screen options={{ headerShown: false }} />
 
 				<Screen>
 					<View style={styles.loading}>
@@ -187,23 +134,15 @@ export default function PhotoDescriptionScreen() {
 
 	return (
 		<>
-			<Stack.Screen
-				options={{ headerShown: false }}
-			/>
+			<Stack.Screen options={{ headerShown: false }} />
 
 			<KeyboardAvoidingView
 				style={styles.keyboardView}
-				behavior={
-					Platform.OS === "ios"
-						? "padding"
-						: "height"
-				}
+				behavior={Platform.OS === "ios" ? "padding" : "height"}
 			>
 				<Screen
 					scroll
-					contentContainerStyle={
-						styles.screenContent
-					}
+					contentContainerStyle={styles.screenContent}
 					keyboardShouldPersistTaps="handled"
 				>
 					<ScreenHeader
@@ -211,33 +150,25 @@ export default function PhotoDescriptionScreen() {
 						subtitle={subtitle}
 						showBackButton
 						style={styles.header}
+						processing={deviceProcessing}
 					/>
 
-					<Text style={styles.label}>
-						Descrição da foto
-					</Text>
+					<Text style={styles.label}>Descrição da foto</Text>
 
 					<TextInput
 						value={description}
 						onChangeText={setDescription}
-						maxLength={
-							MAX_PHOTO_DESCRIPTION_LENGTH
-						}
+						maxLength={MAX_PHOTO_DESCRIPTION_LENGTH}
 						multiline
 						autoFocus
 						textAlignVertical="top"
 						placeholder="Quem está na foto? O que aconteceu? O que você quer lembrar?"
-						placeholderTextColor={
-							colors.textMuted
-						}
+						placeholderTextColor={colors.textMuted}
 						style={styles.input}
 					/>
 
 					<Text style={styles.counter}>
-						{description.length} /{" "}
-						{
-							MAX_PHOTO_DESCRIPTION_LENGTH
-						}
+						{description.length} / {MAX_PHOTO_DESCRIPTION_LENGTH}
 					</Text>
 
 					<PrimaryButton

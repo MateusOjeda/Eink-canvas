@@ -28,6 +28,8 @@ import type { DisplayOrientation } from "@/types/display";
 import { getDevice } from "@/firebase/devices";
 import { getPhotoCollection } from "@/firebase/collections";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 export default function AddPhotoScreen() {
 	const { deviceId, collectionId, mode } = useLocalSearchParams<{
 		deviceId: string;
@@ -52,6 +54,8 @@ export default function AddPhotoScreen() {
 
 	const [loadingMeta, setLoadingMeta] = useState(true);
 	const [pickingImage, setPickingImage] = useState(false);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	useEffect(() => {
 		let isMounted = true;
@@ -245,6 +249,7 @@ export default function AddPhotoScreen() {
 					title="Adicionar foto"
 					subtitle={subtitle}
 					showBackButton
+					processing={deviceProcessing}
 				/>
 
 				<View style={styles.body}>

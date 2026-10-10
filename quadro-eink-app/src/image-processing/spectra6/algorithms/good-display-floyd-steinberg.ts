@@ -1,4 +1,6 @@
-import { loadImageRgba, savePalettePreview } from "../image";
+import { loadImageRgba, savePalettePreview, adjustImageRgba } from "../image";
+
+import type { DisplayOrientation } from "@/types/display";
 
 import { saveSpectra6Binary } from "../binary";
 
@@ -420,15 +422,22 @@ function quantizeGoodDisplayFloydSteinberg(
  * ↓
  * .bin 4 bpp
  */
-export async function convertToSpectra6GoodDisplayFloydSteinberg(uri: string) {
+export async function convertToSpectra6GoodDisplayFloydSteinberg(
+	uri: string,
+	orientation: DisplayOrientation,
+	brightness = 0,
+	saturation = 100,
+) {
 	const totalStart = Date.now();
 
 	const { width, height, pixels } = await loadImageRgba(uri);
 
+	const adjustedPixels = adjustImageRgba(pixels, brightness, saturation);
+
 	const quantizeStart = Date.now();
 
 	const paletteIndices = quantizeGoodDisplayFloydSteinberg(
-		pixels,
+		adjustedPixels,
 		width,
 		height,
 	);
@@ -439,7 +448,13 @@ export async function convertToSpectra6GoodDisplayFloydSteinberg(uri: string) {
 
 	const preview = savePalettePreview(paletteIndices, width, height, prefix);
 
-	const binUri = saveSpectra6Binary(paletteIndices, width, height, prefix);
+	const binUri = saveSpectra6Binary(
+		paletteIndices,
+		width,
+		height,
+		prefix,
+		orientation,
+	);
 
 	const totalMs = Date.now() - totalStart;
 

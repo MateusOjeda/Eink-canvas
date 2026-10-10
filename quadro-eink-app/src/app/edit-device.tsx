@@ -28,6 +28,8 @@ import type { DisplayOrientation } from "@/types/display";
 
 import { MIN_UPDATE_INTERVAL_MINUTES } from "@/constants/constants";
 
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 export default function EditDeviceScreen() {
 	const { deviceId } = useLocalSearchParams<{
 		deviceId: string;
@@ -42,6 +44,8 @@ export default function EditDeviceScreen() {
 
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	useEffect(() => {
 		const loadDevice = async () => {
@@ -171,6 +175,7 @@ export default function EditDeviceScreen() {
 						subtitle="Atualize as configurações do dispositivo."
 						showBackButton
 						style={styles.header}
+						processing={deviceProcessing}
 					/>
 
 					<Text style={styles.label}>Nome do dispositivo</Text>

@@ -114,8 +114,8 @@ export default function WifiConfigScreen() {
 	const [device, setDevice] = useState<ESPDevice | null>(null);
 	const [connecting, setConnecting] = useState(false);
 
-	const [ssid, setSsid] = useState("OJEDA");
-	const [password, setPassword] = useState("mateus118");
+	const [ssid, setSsid] = useState("");
+	const [password, setPassword] = useState("");
 	const [provisioning, setProvisioning] = useState(false);
 
 	const [wifiMac, setWifiMac] = useState<string | null>(null);

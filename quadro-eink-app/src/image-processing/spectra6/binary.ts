@@ -1,4 +1,5 @@
 import { File, Paths } from "expo-file-system";
+import type { DisplayOrientation } from "@/types/display";
 
 /*
  * Índice retornado pelos algoritmos:
@@ -26,6 +27,7 @@ export function saveSpectra6Binary(
 	width: number,
 	height: number,
 	prefix: string,
+	orientation: DisplayOrientation,
 ) {
 	const expectedPixels = width * height;
 
@@ -37,18 +39,39 @@ export function saveSpectra6Binary(
 	}
 
 	/*
-	 * 2 pixels por byte.
+	 * Paisagem: mantém a ordem original.
+	 * Retrato: percorre os pixels por coluna.
+	 */
+	const orderedPixels = new Uint8Array(expectedPixels);
+
+	if (orientation === "portrait") {
+		let index = 0;
+
+		for (let x = width - 1; x >= 0; x--) {
+			for (let y = 0; y < height; y++) {
+				orderedPixels[index++] = paletteIndices[y * width + x];
+			}
+		}
+	} else {
+		for (let i = 0; i < paletteIndices.length; i++) {
+			orderedPixels[i] = paletteIndices[paletteIndices.length - 1 - i];
+		}
+	}
+
+	/*
+	 * Empacota dois pixels por byte:
+	 * primeiro pixel no nibble alto;
+	 * segundo pixel no nibble baixo.
 	 */
 	const output = new Uint8Array(Math.ceil(expectedPixels / 2));
 
 	for (let pixel = 0; pixel < expectedPixels; pixel += 2) {
-		const firstIndex = paletteIndices[pixel];
+		const firstIndex = orderedPixels[pixel];
 
 		const secondIndex =
-			pixel + 1 < expectedPixels ? paletteIndices[pixel + 1] : 1; // branco se sobrar pixel ímpar
+			pixel + 1 < expectedPixels ? orderedPixels[pixel + 1] : 1;
 
 		const firstCode = HARDWARE_CODES[firstIndex];
-
 		const secondCode = HARDWARE_CODES[secondIndex];
 
 		if (firstCode === undefined || secondCode === undefined) {

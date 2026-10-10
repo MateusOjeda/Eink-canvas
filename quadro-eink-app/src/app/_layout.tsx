@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
-import { router, Stack, usePathname } from "expo-router";
+import { router, Stack, usePathname, useGlobalSearchParams } from "expo-router";
+
+import { DeviceProcessingProvider } from "@/contexts/DeviceProcessingContext";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
@@ -26,6 +28,14 @@ export default function RootLayout() {
 	const [authReady, setAuthReady] = useState(false);
 
 	const handledNotification = useRef<string | null>(null);
+
+	const { deviceId: routeDeviceId } = useGlobalSearchParams<{
+		deviceId?: string | string[];
+	}>();
+
+	const deviceId = Array.isArray(routeDeviceId)
+		? routeDeviceId[0]
+		: routeDeviceId;
 
 	useEffect(() => {
 		const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -130,100 +140,102 @@ export default function RootLayout() {
 		<GestureHandlerRootView style={styles.root}>
 			<NavigationBar hidden />
 
-			<Stack
-				screenOptions={{
-					animation: "none",
-					headerTitleStyle: {
-						fontSize: 20,
-						fontWeight: "700",
-						color: "#4e4e4e",
-					},
-				}}
-			>
-				<Stack.Screen
-					name="login"
-					options={{
-						headerShown: false,
+			<DeviceProcessingProvider deviceId={deviceId}>
+				<Stack
+					screenOptions={{
+						animation: "none",
+						headerTitleStyle: {
+							fontSize: 20,
+							fontWeight: "700",
+							color: "#4e4e4e",
+						},
 					}}
-				/>
+				>
+					<Stack.Screen
+						name="login"
+						options={{
+							headerShown: false,
+						}}
+					/>
 
-				<Stack.Screen
-					name="index"
-					options={{
-						title: "Meus quadros",
-					}}
-				/>
+					<Stack.Screen
+						name="index"
+						options={{
+							title: "Meus quadros",
+						}}
+					/>
 
-				<Stack.Screen
-					name="register-device"
-					options={{
-						title: "Adicionar quadro",
-					}}
-				/>
+					<Stack.Screen
+						name="register-device"
+						options={{
+							title: "Adicionar quadro",
+						}}
+					/>
 
-				<Stack.Screen
-					name="device/[deviceId]"
-					options={{
-						title: "",
-					}}
-				/>
+					<Stack.Screen
+						name="device/[deviceId]"
+						options={{
+							title: "",
+						}}
+					/>
 
-				<Stack.Screen
-					name="edit-device"
-					options={{
-						title: "Editar quadro",
-					}}
-				/>
+					<Stack.Screen
+						name="edit-device"
+						options={{
+							title: "Editar quadro",
+						}}
+					/>
 
-				<Stack.Screen
-					name="device/[deviceId]/collection/[collectionId]"
-					options={{
-						title: "",
-					}}
-				/>
+					<Stack.Screen
+						name="device/[deviceId]/collection/[collectionId]"
+						options={{
+							title: "",
+						}}
+					/>
 
-				<Stack.Screen
-					name="device/[deviceId]/collection/[collectionId]/photo/[photoId]"
-					options={{
-						title: "",
-					}}
-				/>
+					<Stack.Screen
+						name="device/[deviceId]/collection/[collectionId]/photo/[photoId]"
+						options={{
+							title: "",
+						}}
+					/>
 
-				<Stack.Screen
-					name="device/[deviceId]/temporary-photos"
-					options={{
-						title: "Fotos agendadas",
-					}}
-				/>
+					<Stack.Screen
+						name="device/[deviceId]/temporary-photos"
+						options={{
+							title: "Fotos agendadas",
+						}}
+					/>
 
-				<Stack.Screen
-					name="device/[deviceId]/temporary-photo"
-					options={{
-						title: "Adicionar foto agendada",
-					}}
-				/>
+					<Stack.Screen
+						name="device/[deviceId]/temporary-photo"
+						options={{
+							title: "Adicionar foto agendada",
+						}}
+					/>
 
-				<Stack.Screen
-					name="add-photo"
-					options={{
-						title: "Adicionar foto",
-					}}
-				/>
+					<Stack.Screen
+						name="add-photo"
+						options={{
+							title: "Adicionar foto",
+						}}
+					/>
 
-				<Stack.Screen
-					name="crop-photo"
-					options={{
-						title: "Ajustar foto",
-					}}
-				/>
+					<Stack.Screen
+						name="crop-photo"
+						options={{
+							title: "Ajustar foto",
+						}}
+					/>
 
-				<Stack.Screen
-					name="preview-photo"
-					options={{
-						title: "Prévia",
-					}}
-				/>
-			</Stack>
+					<Stack.Screen
+						name="preview-photo"
+						options={{
+							title: "Prévia",
+						}}
+					/>
+				</Stack>
+			</DeviceProcessingProvider>
 		</GestureHandlerRootView>
 	);
 }

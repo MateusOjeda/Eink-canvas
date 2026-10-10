@@ -8,27 +8,18 @@ import {
 	View,
 } from "react-native";
 
-import {
-	router,
-	Stack,
-	useLocalSearchParams,
-} from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 
-import { Paths } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 
 import { ImageManipulator } from "expo-image-manipulator";
 
-import {
-	Gesture,
-	GestureDetector,
-} from "react-native-gesture-handler";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import Animated, {
 	useAnimatedStyle,
 	useSharedValue,
 } from "react-native-reanimated";
-
-import { Picker } from "@react-native-picker/picker";
 
 import { Feather } from "@expo/vector-icons";
 
@@ -36,36 +27,22 @@ import { Screen } from "@/components/layout/Screen";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from "@/theme";
+import { colors, radius, spacing, typography } from "@/theme";
 
 import { getDisplaySize } from "@/constants/displays";
 
-import type {
-	DisplayOrientation,
-	DisplayType,
-} from "@/types/display";
-
-import { convertToSpectra6 } from "@/image-processing/spectra6/index";
-
-import type { Spectra6Algorithm } from "@/image-processing/spectra6/types";
+import type { DisplayOrientation, DisplayType } from "@/types/display";
 
 import { getDevice } from "@/firebase/devices";
 import { getPhotoCollection } from "@/firebase/collections";
 
-import { createThumbnail } from "@/image-processing/thumbnail";
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
 
 function clamp(value: number, min: number, max: number) {
 	"worklet";
 
 	return Math.min(Math.max(value, min), max);
 }
-
-
 
 export default function CropPhotoScreen() {
 	const params = useLocalSearchParams<{
@@ -91,18 +68,16 @@ export default function CropPhotoScreen() {
 	const imageWidth = Number(params.imageWidth);
 	const imageHeight = Number(params.imageHeight);
 
-	const { width: screenWidth, height: screenHeight } =
-		useWindowDimensions();
+	const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-	const [displayType, setDisplayType] =
-		useState<DisplayType | null>(null);
+	const [displayType, setDisplayType] = useState<DisplayType | null>(null);
 
 	const [deviceName, setDeviceName] = useState("");
-	const [collectionName, setCollectionName] =
-		useState("");
+	const [collectionName, setCollectionName] = useState("");
 
-	const [deviceLoadError, setDeviceLoadError] =
-		useState<string | null>(null);
+	const [deviceLoadError, setDeviceLoadError] = useState<string | null>(null);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	useEffect(() => {
 		let isMounted = true;
@@ -126,9 +101,7 @@ export default function CropPhotoScreen() {
 				}
 
 				if (!device) {
-					throw new Error(
-						"Dispositivo não encontrado.",
-					);
+					throw new Error("Dispositivo não encontrado.");
 				}
 
 				setDisplayType(device.displayType);
@@ -138,10 +111,7 @@ export default function CropPhotoScreen() {
 					setCollectionName(collection.name);
 				}
 			} catch (error) {
-				console.error(
-					"Erro ao carregar contexto da foto:",
-					error,
-				);
+				console.error("Erro ao carregar contexto da foto:", error);
 
 				if (!isMounted) {
 					return;
@@ -164,9 +134,7 @@ export default function CropPhotoScreen() {
 
 	const subtitle = useMemo(() => {
 		if (photoMode === "collection") {
-			return [collectionName, deviceName]
-				.filter(Boolean)
-				.join(" · ");
+			return [collectionName, deviceName].filter(Boolean).join(" · ");
 		}
 
 		return deviceName;
@@ -184,48 +152,37 @@ export default function CropPhotoScreen() {
 				height: 1,
 			};
 
-	const aspectRatio =
-		displaySize.width / displaySize.height;
+	const aspectRatio = displaySize.width / displaySize.height;
 
-	const [algorithm, setAlgorithm] =
-		useState<Spectra6Algorithm>(
-			"floyd-steinberg-oklab-serpentine",
-		);
-
-	const [isProcessing, setIsProcessing] =
-		useState(false);
+	const [isProcessing, setIsProcessing] = useState(false);
 
 	/*
 	 * A foto inteira fica visível.
 	 * A moldura de crop é que se move e redimensiona
 	 * sobre a imagem, sempre preservando o ratio do display.
 	 */
-	const availableImageWidth =
-		screenWidth - spacing.xxl * 2;
+	const availableImageWidth = screenWidth - spacing.xxl * 2;
 
 	const maxImageHeight = Math.min(
 		screenHeight * 0.56,
 		Math.max(320, screenHeight - 340),
 	);
 
-	const imageAspectRatio =
-		imageWidth / imageHeight;
+	const imageAspectRatio = imageWidth / imageHeight;
 
 	const renderedImageWidth = Math.min(
 		availableImageWidth,
 		maxImageHeight * imageAspectRatio,
 	);
 
-	const renderedImageHeight =
-		renderedImageWidth / imageAspectRatio;
+	const renderedImageHeight = renderedImageWidth / imageAspectRatio;
 
 	const maxCropWidth = Math.min(
 		renderedImageWidth,
 		renderedImageHeight * aspectRatio,
 	);
 
-	const maxCropHeight =
-		maxCropWidth / aspectRatio;
+	const maxCropHeight = maxCropWidth / aspectRatio;
 
 	const minCropWidth = Math.min(
 		maxCropWidth,
@@ -244,17 +201,14 @@ export default function CropPhotoScreen() {
 
 	useEffect(() => {
 		const initialWidth = maxCropWidth * 0.86;
-		const initialHeight =
-			initialWidth / aspectRatio;
+		const initialHeight = initialWidth / aspectRatio;
 
 		cropWidth.value = initialWidth;
 		cropHeight.value = initialHeight;
 
-		cropX.value =
-			(renderedImageWidth - initialWidth) / 2;
+		cropX.value = (renderedImageWidth - initialWidth) / 2;
 
-		cropY.value =
-			(renderedImageHeight - initialHeight) / 2;
+		cropY.value = (renderedImageHeight - initialHeight) / 2;
 	}, [
 		renderedImageWidth,
 		renderedImageHeight,
@@ -272,14 +226,10 @@ export default function CropPhotoScreen() {
 		savedCropHeight.value = cropHeight.value;
 	};
 
-	const getResizeDelta = (
-		deltaX: number,
-		deltaYAsWidth: number,
-	) => {
+	const getResizeDelta = (deltaX: number, deltaYAsWidth: number) => {
 		"worklet";
 
-		return Math.abs(deltaX) >=
-			Math.abs(deltaYAsWidth)
+		return Math.abs(deltaX) >= Math.abs(deltaYAsWidth)
 			? deltaX
 			: deltaYAsWidth;
 	};
@@ -290,19 +240,15 @@ export default function CropPhotoScreen() {
 		})
 		.onUpdate((event) => {
 			cropX.value = clamp(
-				savedCropX.value +
-					event.translationX,
+				savedCropX.value + event.translationX,
 				0,
-				renderedImageWidth -
-					cropWidth.value,
+				renderedImageWidth - cropWidth.value,
 			);
 
 			cropY.value = clamp(
-				savedCropY.value +
-					event.translationY,
+				savedCropY.value + event.translationY,
 				0,
-				renderedImageHeight -
-					cropHeight.value,
+				renderedImageHeight - cropHeight.value,
 			);
 		});
 
@@ -317,11 +263,8 @@ export default function CropPhotoScreen() {
 			);
 
 			const maximumWidth = Math.min(
-				renderedImageWidth -
-					savedCropX.value,
-				(renderedImageHeight -
-					savedCropY.value) *
-					aspectRatio,
+				renderedImageWidth - savedCropX.value,
+				(renderedImageHeight - savedCropY.value) * aspectRatio,
 			);
 
 			const nextWidth = clamp(
@@ -331,8 +274,7 @@ export default function CropPhotoScreen() {
 			);
 
 			cropWidth.value = nextWidth;
-			cropHeight.value =
-				nextWidth / aspectRatio;
+			cropHeight.value = nextWidth / aspectRatio;
 		});
 
 	const resizeTopLeftGesture = Gesture.Pan()
@@ -342,22 +284,14 @@ export default function CropPhotoScreen() {
 		.onUpdate((event) => {
 			const delta = getResizeDelta(
 				-event.translationX,
-				-event.translationY *
-					aspectRatio,
+				-event.translationY * aspectRatio,
 			);
 
-			const right =
-				savedCropX.value +
-				savedCropWidth.value;
+			const right = savedCropX.value + savedCropWidth.value;
 
-			const bottom =
-				savedCropY.value +
-				savedCropHeight.value;
+			const bottom = savedCropY.value + savedCropHeight.value;
 
-			const maximumWidth = Math.min(
-				right,
-				bottom * aspectRatio,
-			);
+			const maximumWidth = Math.min(right, bottom * aspectRatio);
 
 			const nextWidth = clamp(
 				savedCropWidth.value + delta,
@@ -365,17 +299,14 @@ export default function CropPhotoScreen() {
 				maximumWidth,
 			);
 
-			const nextHeight =
-				nextWidth / aspectRatio;
+			const nextHeight = nextWidth / aspectRatio;
 
 			cropWidth.value = nextWidth;
 			cropHeight.value = nextHeight;
 
-			cropX.value =
-				right - nextWidth;
+			cropX.value = right - nextWidth;
 
-			cropY.value =
-				bottom - nextHeight;
+			cropY.value = bottom - nextHeight;
 		});
 
 	const resizeTopRightGesture = Gesture.Pan()
@@ -385,15 +316,12 @@ export default function CropPhotoScreen() {
 		.onUpdate((event) => {
 			const delta = getResizeDelta(
 				event.translationX,
-				-event.translationY *
-					aspectRatio,
+				-event.translationY * aspectRatio,
 			);
 
 			const left = savedCropX.value;
 
-			const bottom =
-				savedCropY.value +
-				savedCropHeight.value;
+			const bottom = savedCropY.value + savedCropHeight.value;
 
 			const maximumWidth = Math.min(
 				renderedImageWidth - left,
@@ -406,16 +334,14 @@ export default function CropPhotoScreen() {
 				maximumWidth,
 			);
 
-			const nextHeight =
-				nextWidth / aspectRatio;
+			const nextHeight = nextWidth / aspectRatio;
 
 			cropWidth.value = nextWidth;
 			cropHeight.value = nextHeight;
 
 			cropX.value = left;
 
-			cropY.value =
-				bottom - nextHeight;
+			cropY.value = bottom - nextHeight;
 		});
 
 	const resizeBottomLeftGesture = Gesture.Pan()
@@ -425,20 +351,16 @@ export default function CropPhotoScreen() {
 		.onUpdate((event) => {
 			const delta = getResizeDelta(
 				-event.translationX,
-				event.translationY *
-					aspectRatio,
+				event.translationY * aspectRatio,
 			);
 
-			const right =
-				savedCropX.value +
-				savedCropWidth.value;
+			const right = savedCropX.value + savedCropWidth.value;
 
 			const top = savedCropY.value;
 
 			const maximumWidth = Math.min(
 				right,
-				(renderedImageHeight - top) *
-					aspectRatio,
+				(renderedImageHeight - top) * aspectRatio,
 			);
 
 			const nextWidth = clamp(
@@ -448,147 +370,88 @@ export default function CropPhotoScreen() {
 			);
 
 			cropWidth.value = nextWidth;
-			cropHeight.value =
-				nextWidth / aspectRatio;
+			cropHeight.value = nextWidth / aspectRatio;
 
-			cropX.value =
-				right - nextWidth;
+			cropX.value = right - nextWidth;
 
 			cropY.value = top;
 		});
 
-	const cropRectStyle = useAnimatedStyle(
-		() => ({
-			left: cropX.value,
-			top: cropY.value,
-			width: cropWidth.value,
-			height: cropHeight.value,
-		}),
-	);
+	const cropRectStyle = useAnimatedStyle(() => ({
+		left: cropX.value,
+		top: cropY.value,
+		width: cropWidth.value,
+		height: cropHeight.value,
+	}));
 
-	const topShadeStyle = useAnimatedStyle(
-		() => ({
-			height: cropY.value,
-		}),
-	);
+	const topShadeStyle = useAnimatedStyle(() => ({
+		height: cropY.value,
+	}));
 
-	const bottomShadeStyle = useAnimatedStyle(
-		() => ({
-			top:
-				cropY.value +
-				cropHeight.value,
-			height:
-				renderedImageHeight -
-				cropY.value -
-				cropHeight.value,
-		}),
-	);
+	const bottomShadeStyle = useAnimatedStyle(() => ({
+		top: cropY.value + cropHeight.value,
+		height: renderedImageHeight - cropY.value - cropHeight.value,
+	}));
 
-	const leftShadeStyle = useAnimatedStyle(
-		() => ({
-			top: cropY.value,
-			width: cropX.value,
-			height: cropHeight.value,
-		}),
-	);
+	const leftShadeStyle = useAnimatedStyle(() => ({
+		top: cropY.value,
+		width: cropX.value,
+		height: cropHeight.value,
+	}));
 
-	const rightShadeStyle = useAnimatedStyle(
-		() => ({
-			left:
-				cropX.value +
-				cropWidth.value,
-			top: cropY.value,
-			width:
-				renderedImageWidth -
-				cropX.value -
-				cropWidth.value,
-			height: cropHeight.value,
-		}),
-	);
+	const rightShadeStyle = useAnimatedStyle(() => ({
+		left: cropX.value + cropWidth.value,
+		top: cropY.value,
+		width: renderedImageWidth - cropX.value - cropWidth.value,
+		height: cropHeight.value,
+	}));
 
-	const handleTopLeftStyle = useAnimatedStyle(
-		() => ({
-			left: cropX.value - 22,
-			top: cropY.value - 22,
-		}),
-	);
+	const handleTopLeftStyle = useAnimatedStyle(() => ({
+		left: cropX.value - 22,
+		top: cropY.value - 22,
+	}));
 
-	const handleTopRightStyle = useAnimatedStyle(
-		() => ({
-			left:
-				cropX.value +
-				cropWidth.value -
-				22,
-			top: cropY.value - 22,
-		}),
-	);
+	const handleTopRightStyle = useAnimatedStyle(() => ({
+		left: cropX.value + cropWidth.value - 22,
+		top: cropY.value - 22,
+	}));
 
-	const handleBottomLeftStyle = useAnimatedStyle(
-		() => ({
-			left: cropX.value - 22,
-			top:
-				cropY.value +
-				cropHeight.value -
-				22,
-		}),
-	);
+	const handleBottomLeftStyle = useAnimatedStyle(() => ({
+		left: cropX.value - 22,
+		top: cropY.value + cropHeight.value - 22,
+	}));
 
-	const handleBottomRightStyle = useAnimatedStyle(
-		() => ({
-			left:
-				cropX.value +
-				cropWidth.value -
-				22,
-			top:
-				cropY.value +
-				cropHeight.value -
-				22,
-		}),
-	);
+	const handleBottomRightStyle = useAnimatedStyle(() => ({
+		left: cropX.value + cropWidth.value - 22,
+		top: cropY.value + cropHeight.value - 22,
+	}));
 
 	const createCroppedImage = async () => {
-		const scaleX =
-			imageWidth / renderedImageWidth;
+		const scaleX = imageWidth / renderedImageWidth;
 
-		const scaleY =
-			imageHeight / renderedImageHeight;
+		const scaleY = imageHeight / renderedImageHeight;
 
 		const originX = Math.max(
 			0,
-			Math.min(
-				imageWidth - 1,
-				Math.round(
-					cropX.value * scaleX,
-				),
-			),
+			Math.min(imageWidth - 1, Math.round(cropX.value * scaleX)),
 		);
 
 		const originY = Math.max(
 			0,
-			Math.min(
-				imageHeight - 1,
-				Math.round(
-					cropY.value * scaleY,
-				),
-			),
+			Math.min(imageHeight - 1, Math.round(cropY.value * scaleY)),
 		);
 
 		const width = Math.min(
 			imageWidth - originX,
-			Math.round(
-				cropWidth.value * scaleX,
-			),
+			Math.round(cropWidth.value * scaleX),
 		);
 
 		const height = Math.min(
 			imageHeight - originY,
-			Math.round(
-				cropHeight.value * scaleY,
-			),
+			Math.round(cropHeight.value * scaleY),
 		);
 
-		const context =
-			ImageManipulator.manipulate(uri);
+		const context = ImageManipulator.manipulate(uri);
 
 		context.crop({
 			originX,
@@ -602,8 +465,7 @@ export default function CropPhotoScreen() {
 			height: displaySize.height,
 		});
 
-		const renderedImage =
-			await context.renderAsync();
+		const renderedImage = await context.renderAsync();
 
 		return renderedImage.saveAsync();
 	};
@@ -616,114 +478,47 @@ export default function CropPhotoScreen() {
 		});
 
 		try {
-			const croppedImage =
-				await createCroppedImage();
+			const croppedImage = await createCroppedImage();
 
-			const spectraImage =
-				await convertToSpectra6(
-					croppedImage.uri,
-					algorithm,
-				);
+			const fileName = Paths.basename(croppedImage.uri);
+			const sourceFile = new File(croppedImage.uri);
+			const destinationFile = new File(Paths.cache, fileName);
 
-			if (photoMode === "temporary") {
-				setIsProcessing(false);
-
-				router.dismissTo({
-					pathname:
-						"/device/[deviceId]/temporary-photo",
-					params: {
-						deviceId:
-							params.deviceId,
-
-						previewFileName:
-							Paths.basename(
-								spectraImage.uri,
-							),
-
-						binFileName:
-							Paths.basename(
-								spectraImage.binUri,
-							),
-
-						imageWidth:
-							spectraImage.width.toString(),
-
-						imageHeight:
-							spectraImage.height.toString(),
-					},
-				});
-
-				return;
+			if (sourceFile.uri !== destinationFile.uri) {
+				sourceFile.copy(destinationFile);
 			}
-
-			if (!params.collectionId) {
-				throw new Error(
-					"Collection ID não informado.",
-				);
-			}
-
-			const thumbnail =
-				await createThumbnail(
-					croppedImage.uri,
-					displaySize.width,
-					displaySize.height,
-				);
 
 			setIsProcessing(false);
 
 			router.push({
-				pathname: "/preview-photo",
+				pathname: "/adjust-photo",
 				params: {
-					deviceId:
-						params.deviceId,
-
-					collectionId:
-						params.collectionId,
-
-					fileName:
-						Paths.basename(
-							spectraImage.uri,
-						),
-
-					thumbnailFileName:
-						Paths.basename(
-							thumbnail.uri,
-						),
-
-					binFileName:
-						Paths.basename(
-							spectraImage.binUri,
-						),
-
-					imageWidth:
-						spectraImage.width.toString(),
-
-					imageHeight:
-						spectraImage.height.toString(),
+					deviceId: params.deviceId,
+					collectionId: params.collectionId ?? "",
+					mode: photoMode,
+					fileName,
+					imageWidth: displaySize.width.toString(),
+					imageHeight: displaySize.height.toString(),
+					orientation,
+					deviceName,
+					collectionName,
 				},
 			});
 		} catch (error) {
 			setIsProcessing(false);
 
-			console.error(
-				"Erro ao processar imagem:",
-				error,
-			);
+			console.error("Erro ao recortar imagem:", error);
 		}
 	};
 
 	if (deviceLoadError) {
 		return (
 			<>
-				<Stack.Screen
-					options={{ headerShown: false }}
-				/>
+				<Stack.Screen options={{ headerShown: false }} />
 
 				<Screen>
 					<View style={styles.centerState}>
-						<Text style={styles.errorText}>
-							{deviceLoadError}
-						</Text>
+						<Text style={styles.errorText}>{deviceLoadError}</Text>
 					</View>
 				</Screen>
 			</>
@@ -733,9 +528,7 @@ export default function CropPhotoScreen() {
 	if (!displayType) {
 		return (
 			<>
-				<Stack.Screen
-					options={{ headerShown: false }}
-				/>
+				<Stack.Screen options={{ headerShown: false }} />
 
 				<Screen>
 					<View style={styles.centerState}>
@@ -756,9 +549,7 @@ export default function CropPhotoScreen() {
 	if (isProcessing) {
 		return (
 			<>
-				<Stack.Screen
-					options={{ headerShown: false }}
-				/>
+				<Stack.Screen options={{ headerShown: false }} />
 
 				<Screen>
 					<View style={styles.centerState}>
@@ -767,21 +558,12 @@ export default function CropPhotoScreen() {
 							color={colors.primary}
 						/>
 
-						<Text
-							style={
-								styles.processingTitle
-							}
-						>
-							Processando imagem
+						<Text style={styles.processingTitle}>
+							Preparando recorte
 						</Text>
 
-						<Text
-							style={
-								styles.processingText
-							}
-						>
-							Preparando a foto para o
-							Spectra 6…
+						<Text style={styles.processingText}>
+							Salvando a área selecionada…
 						</Text>
 					</View>
 				</Screen>
@@ -791,9 +573,7 @@ export default function CropPhotoScreen() {
 
 	return (
 		<>
-			<Stack.Screen
-				options={{ headerShown: false }}
-			/>
+			<Stack.Screen options={{ headerShown: false }} />
 
 			<Screen contentContainerStyle={styles.screen}>
 				<ScreenHeader
@@ -801,11 +581,11 @@ export default function CropPhotoScreen() {
 					subtitle={subtitle}
 					showBackButton
 					style={styles.header}
+					processing={deviceProcessing}
 				/>
 
 				<Text style={styles.resolution}>
-					{displaySize.width} ×{" "}
-					{displaySize.height}
+					{displaySize.width} × {displaySize.height}
 				</Text>
 
 				<View style={styles.cropContainer}>
@@ -829,44 +609,27 @@ export default function CropPhotoScreen() {
 
 						<Animated.View
 							pointerEvents="none"
-							style={[
-								styles.shadeTop,
-								topShadeStyle,
-							]}
+							style={[styles.shadeTop, topShadeStyle]}
 						/>
 
 						<Animated.View
 							pointerEvents="none"
-							style={[
-								styles.shadeBottom,
-								bottomShadeStyle,
-							]}
+							style={[styles.shadeBottom, bottomShadeStyle]}
 						/>
 
 						<Animated.View
 							pointerEvents="none"
-							style={[
-								styles.shadeLeft,
-								leftShadeStyle,
-							]}
+							style={[styles.shadeLeft, leftShadeStyle]}
 						/>
 
 						<Animated.View
 							pointerEvents="none"
-							style={[
-								styles.shadeRight,
-								rightShadeStyle,
-							]}
+							style={[styles.shadeRight, rightShadeStyle]}
 						/>
 
-						<GestureDetector
-							gesture={moveGesture}
-						>
+						<GestureDetector gesture={moveGesture}>
 							<Animated.View
-								style={[
-									styles.cropFrame,
-									cropRectStyle,
-								]}
+								style={[styles.cropFrame, cropRectStyle]}
 							>
 								<View
 									pointerEvents="none"
@@ -910,16 +673,9 @@ export default function CropPhotoScreen() {
 							</Animated.View>
 						</GestureDetector>
 
-						<GestureDetector
-							gesture={
-								resizeTopLeftGesture
-							}
-						>
+						<GestureDetector gesture={resizeTopLeftGesture}>
 							<Animated.View
-								style={[
-									styles.handleTouch,
-									handleTopLeftStyle,
-								]}
+								style={[styles.handleTouch, handleTopLeftStyle]}
 							>
 								<View
 									style={[
@@ -930,11 +686,7 @@ export default function CropPhotoScreen() {
 							</Animated.View>
 						</GestureDetector>
 
-						<GestureDetector
-							gesture={
-								resizeTopRightGesture
-							}
-						>
+						<GestureDetector gesture={resizeTopRightGesture}>
 							<Animated.View
 								style={[
 									styles.handleTouch,
@@ -950,11 +702,7 @@ export default function CropPhotoScreen() {
 							</Animated.View>
 						</GestureDetector>
 
-						<GestureDetector
-							gesture={
-								resizeBottomLeftGesture
-							}
-						>
+						<GestureDetector gesture={resizeBottomLeftGesture}>
 							<Animated.View
 								style={[
 									styles.handleTouch,
@@ -970,11 +718,7 @@ export default function CropPhotoScreen() {
 							</Animated.View>
 						</GestureDetector>
 
-						<GestureDetector
-							gesture={
-								resizeBottomRightGesture
-							}
-						>
+						<GestureDetector gesture={resizeBottomRightGesture}>
 							<Animated.View
 								style={[
 									styles.handleTouch,
@@ -992,60 +736,9 @@ export default function CropPhotoScreen() {
 					</View>
 				</View>
 				<Text style={styles.hint}>
-					Arraste a moldura para posicionar. Use os
-					cantos para aumentar ou reduzir o recorte.
+					Arraste a moldura para posicionar. Use os cantos para
+					aumentar ou reduzir o recorte.
 				</Text>
-
-				<View style={styles.algorithmSection}>
-					<Text style={styles.algorithmLabel}>
-						Algoritmo
-					</Text>
-
-					<View style={styles.pickerContainer}>
-						<Picker
-							selectedValue={algorithm}
-							onValueChange={(value) => {
-								setAlgorithm(
-									value as Spectra6Algorithm,
-								);
-							}}
-							style={styles.picker}
-							dropdownIconColor={
-								colors.text
-							}
-						>
-							<Picker.Item
-								label="Floyd–Steinberg OKLab"
-								value="floyd-steinberg-oklab-serpentine"
-							/>
-
-							<Picker.Item
-								label="Floyd–Steinberg RGB"
-								value="floyd-steinberg-rgb"
-							/>
-
-							<Picker.Item
-								label="Barycentric + Blue Noise"
-								value="barycentric-blue-noise"
-							/>
-
-							<Picker.Item
-								label="Barycentric + Blue Noise (Compensated)"
-								value="barycentric-blue-noise-compensated"
-							/>
-
-							<Picker.Item
-								label="Nearest RGB"
-								value="nearest-rgb"
-							/>
-
-							<Picker.Item
-								label="Good Display — Floyd–Steinberg"
-								value="good-display-floyd-steinberg"
-							/>
-						</Picker>
-					</View>
-				</View>
 
 				<PrimaryButton
 					title="Continuar"
@@ -1161,8 +854,7 @@ const styles = StyleSheet.create({
 		top: 0,
 		bottom: 0,
 		width: StyleSheet.hairlineWidth,
-		backgroundColor:
-			"rgba(255, 255, 255, 0.55)",
+		backgroundColor: "rgba(255, 255, 255, 0.55)",
 	},
 
 	horizontalGridLine: {
@@ -1170,8 +862,7 @@ const styles = StyleSheet.create({
 		left: 0,
 		right: 0,
 		height: StyleSheet.hairlineWidth,
-		backgroundColor:
-			"rgba(255, 255, 255, 0.55)",
+		backgroundColor: "rgba(255, 255, 255, 0.55)",
 	},
 
 	handleTouch: {
