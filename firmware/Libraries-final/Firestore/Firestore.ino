@@ -31,6 +31,7 @@ WiFiManager wifiManager;
 TextRenderer textRenderer;
 
 uint32_t nextSleepMinutes = 0;
+String deviceId;
 
 #define BUTTON_SYNC  46  // Botao 2
 #define BUTTON_NEXT   9  // Botao 3 - acorda o ESP
@@ -191,8 +192,7 @@ bool writeStateFirebase()
     false
   );
 
-  String deviceId =
-    WiFi.macAddress();
+  deviceId = WiFi.macAddress();
 
   return firebase.writeState(
     deviceId.c_str(),
@@ -200,6 +200,29 @@ bool writeStateFirebase()
   );
 }
 
+bool setProcessingStatus(
+  const String& deviceId,
+  const String& status
+)
+{
+  String timestamp =
+    getCurrentTimestamp();
+
+  if (timestamp.length() == 0)
+  {
+    Serial.println(
+      "PROCESSING: nao foi possivel obter timestamp."
+    );
+
+    return false;
+  }
+
+  return firebase.writeProcessingStatus(
+    deviceId.c_str(),
+    status,
+    timestamp.c_str()
+  );
+}
 
 bool syncClock()
 {
@@ -328,7 +351,7 @@ bool displayTextScreen(const String& text)
   if (!canUpdateDisplay())
   {
     Serial.println(
-      "INFO: atualizacao bloqueada. Menos de 3 minutos desde a ultima atualizacao."
+      "INFO: atualizacao bloqueada. Menos de 2 minutos desde a ultima atualizacao."
     );
 
     return false;
@@ -3324,7 +3347,7 @@ bool chooseDisplayPhoto(
 // ROTINAS PRINCIPAIS SYNC, NEXT, INFO, WIFI
 // ============================================================
 
-void sync()
+bool syncDevice()
 {
   Serial.println(
     "=== SYNC ==="
@@ -3345,7 +3368,7 @@ void sync()
       "ERRO: nao foi possivel conectar ao Wi-Fi salvo."
     );
 
-    return;
+    return false;
   }
 
   Serial.println(
@@ -3360,8 +3383,7 @@ void sync()
     WiFi.localIP()
   );
 
-  String deviceId =
-    WiFi.macAddress();
+  deviceId = WiFi.macAddress();
 
   Serial.print(
     "Device ID: "
@@ -3377,7 +3399,7 @@ void sync()
   // ============================================================
 
   if (!syncClock())
-    return;
+    return false;
 
 
   // ============================================================
@@ -3396,7 +3418,7 @@ void sync()
       "ERRO: nao foi possivel inicializar o SD."
     );
 
-    return;
+    return false;
   }
 
 
@@ -3410,7 +3432,7 @@ void sync()
       "ERRO: nao foi possivel carregar state."
     );
 
-    return;
+    return false;
   }
 
 
@@ -3425,8 +3447,23 @@ void sync()
   );
 
   if (!firebase.authenticate())
-    return;
+  {
+    Serial.println(
+      "Autenticacao Firebase falhou."
+    );
 
+    return false;
+  }
+
+  if (!setProcessingStatus(
+        deviceId,
+        "thinking"
+      ))
+  {
+    Serial.println(
+      "PROCESSING: nao foi possivel registrar thinking."
+    );
+  }
 
   // ============================================================
   // FIRESTORE - CONFIG
@@ -3443,7 +3480,7 @@ void sync()
       "ERRO: não foi possível sincronizar config."
     );
 
-    return;
+    return false;
   }
 
   if (sd.exists("/config.json"))
@@ -3459,7 +3496,7 @@ void sync()
       "ERRO: não foi possível salvar /config.json."
     );
 
-    return;
+    return false;
   }
 
   Serial.println(
@@ -3488,7 +3525,7 @@ void sync()
       "ERRO: não foi possível sincronizar photos."
     );
 
-    return;
+    return false;
   }
 
   Serial.println(
@@ -3515,7 +3552,7 @@ void sync()
       "ERRO: nao foi possivel ler prioridade."
     );
 
-    return;
+    return false;
   }
 
 
@@ -3540,7 +3577,7 @@ void sync()
       "ERRO: não foi possível sincronizar temp photos."
     );
 
-    return;
+    return false;
   }
 
   Serial.println(
@@ -3596,7 +3633,7 @@ void sync()
       "SYNC: nenhuma foto disponivel."
     );
 
-    return;
+    return true;
   }
 
 
@@ -3613,7 +3650,7 @@ void sync()
       "ERRO: nao foi possivel mostrar a foto."
     );
 
-    return;
+    return false;
   }
 
 
@@ -3640,7 +3677,7 @@ void sync()
         ))
     {
       Serial.println("SYNC: erro ao marcar temporary como consumida.");
-      return;
+      return false;
     }
 
     Serial.println(
@@ -3674,7 +3711,7 @@ void sync()
         "ERRO: nao foi possivel remover prioridade."
       );
 
-      return;
+      return false;
     }
 
     Serial.println(
@@ -3695,7 +3732,7 @@ void sync()
       "ERRO: nao foi possivel registrar historico."
     );
 
-    return;
+    return false;
   }
 
 
@@ -3709,17 +3746,28 @@ void sync()
       "ERRO: nao foi possivel registrar state Firebase."
     );
 
-    return;
+    return false;
   }
-
 
   // ============================================================
   // FINAL
   // ============================================================
 
+  if (!setProcessingStatus(
+      deviceId,
+      "idle"
+    ))
+  {
+    Serial.println(
+      "PROCESSING: nao foi possivel registrar idle."
+    );
+  }
+
   Serial.println(
     "END Sync"
   );
+
+  return true;
 }
 
 
@@ -3811,19 +3859,27 @@ void info()
   if (!firebase.authenticate())
   {
     Serial.println(
-      "INFO: autenticacao Firebase falhou."
+      "Autenticacao Firebase falhou."
     );
 
     return;
   }
+  
+  deviceId = WiFi.macAddress();
 
+  if (!setProcessingStatus(
+        deviceId,
+        "thinking"
+      ))
+  {
+    Serial.println(
+      "PROCESSING: nao foi possivel registrar thinking."
+    );
+  }
 
   // ============================================================
   // PHOTOS
   // ============================================================
-
-  String deviceId =
-    WiFi.macAddress();
 
   String photosJson;
 
@@ -3881,7 +3937,7 @@ void info()
 
 
   // ============================================================
-  // AGUARDAR 3 MINUTOS
+  // AGUARDAR 2 MINUTOS
   // ============================================================
 
   Serial.println(
@@ -3889,7 +3945,7 @@ void info()
   );
 
   Serial.println(
-    "INFO: aguardando 3 minutos antes de restaurar a imagem."
+    "INFO: aguardando 2 minutos antes de restaurar a imagem."
   );
 
   delay(displayRatePeriod * 1000);
@@ -3948,6 +4004,16 @@ void info()
     return;
   }
 
+  if (!setProcessingStatus(
+      deviceId,
+      "idle"
+    ))
+  {
+    Serial.println(
+      "PROCESSING: nao foi possivel registrar idle."
+    );
+  }
+
   Serial.println(
     "INFO: imagem original restaurada."
   );
@@ -3968,8 +4034,12 @@ void wifi()
 
   if (wifiManager.startConfiguration())
   {
-    sync();
+    syncDevice();
   }
+
+  Serial.println(
+    "END Info"
+  );
 }
 
 
@@ -4090,10 +4160,29 @@ void setup()
   // ============================================================
   // BOOT NORMAL
   // ============================================================
-
   if (reason == ESP_SLEEP_WAKEUP_UNDEFINED)
   {
-    sync();
+    for (int attempt = 1; attempt <= 3; attempt++)
+    {
+      if (syncDevice())
+        break;
+
+      if (attempt < 3)
+      {
+        Serial.printf(
+          "SYNC falhou. Tentativa %d/3 concluida.\n",
+          attempt
+        );
+
+        delay(1000);
+      }
+      else
+      {
+        Serial.println(
+          "SYNC falhou apos 3 tentativas."
+        );
+      }
+    }
   }
 
 
@@ -4105,7 +4194,7 @@ void setup()
     reason == ESP_SLEEP_WAKEUP_TIMER
   )
   {
-    sync();
+    syncDevice();
   }
 
 
@@ -4153,7 +4242,7 @@ void setup()
 
         actionDetected = true;
 
-        sync();
+        syncDevice();
       }
 
       else if (
@@ -4214,6 +4303,9 @@ void setup()
     }
   }
 
+  Serial.println(
+    "END Setup"
+  );
 
   // ============================================================
   // DEEP SLEEP
@@ -4258,10 +4350,6 @@ void setup()
   delay(500);
 
   esp_deep_sleep_start();
-
-  Serial.println(
-    "END Setup"
-  );
 }
 
 

@@ -3,8 +3,8 @@
 #include "SDManager.h"
 #include "FirebaseManager.h"
 
-#define WIFI_SSID "OJEDA"
-#define WIFI_PASSWORD "mateus118"
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
 #define API_KEY "AIzaSyCzNPNS0mugUk31NpC1XGKKZjR6qQPHF50"
 
@@ -23,7 +23,6 @@ void setup()
 
   Serial.println();
   Serial.println("=== TESTE FIRESTORE DO DISPOSITIVO ===");
-
 
   // ============================================================
   // WI-FI
@@ -45,7 +44,6 @@ void setup()
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
 
-
   // ============================================================
   // SD
   // ============================================================
@@ -56,26 +54,22 @@ void setup()
   if (!sd.begin(Serial))
   {
     Serial.println(
-      "ERRO: não foi possível inicializar o SD."
-    );
+        "ERRO: não foi possível inicializar o SD.");
 
     return;
   }
-
 
   // ============================================================
   // FIREBASE
   // ============================================================
 
   firebase.begin(
-    API_KEY,
-    STORAGE_BUCKET_ID,
-    Serial
-  );
+      API_KEY,
+      STORAGE_BUCKET_ID,
+      Serial);
 
   if (!firebase.authenticate())
     return;
-
 
   // ============================================================
   // FIRESTORE - DEVICE
@@ -85,7 +79,6 @@ void setup()
   Serial.println("=== TESTANDO LEITURA DO DEVICE ===");
 
   firebase.readDeviceConfig(DEVICE_ID);
-
 
   // ============================================================
   // FIRESTORE - STATUS
@@ -97,7 +90,6 @@ void setup()
   // Temporariamente mantido aqui.
   // Vamos colocar isso no FirebaseManager no próximo passo.
 
-
   // ============================================================
   // FIREBASE STORAGE
   // ============================================================
@@ -106,15 +98,14 @@ void setup()
   Serial.println("=== TESTANDO STORAGE ===");
 
   String storagePath =
-    "devices/cbbgxcjjhccnnvccbbb/"
-    "collections/ftmNhC36LdG6TxWl3nat/"
-    "images/Ew53SMTv4mxOfaIb94IS/"
-    "display.bin";
+      "devices/cbbgxcjjhccnnvccbbb/"
+      "collections/ftmNhC36LdG6TxWl3nat/"
+      "images/Ew53SMTv4mxOfaIb94IS/"
+      "display.bin";
 
   if (firebase.downloadImage(
-        storagePath.c_str(),
-        "/test-display.bin"
-      ))
+          storagePath.c_str(),
+          "/test-display.bin"))
   {
     Serial.println();
     Serial.println("Verificando arquivo no SD...");
@@ -130,11 +121,9 @@ void setup()
     else
     {
       Serial.println(
-        "ERRO: arquivo não encontrado no SD."
-      );
+          "ERRO: arquivo não encontrado no SD.");
     }
   }
-
 
   Serial.println();
   Serial.println("=== TESTE CONCLUÍDO ===");

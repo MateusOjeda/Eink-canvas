@@ -1209,6 +1209,55 @@ bool FirebaseManager::writeState(
   return false;
 }
 
+bool FirebaseManager::writeProcessingStatus(
+  const char* deviceId,
+  const String& status,
+  const char* updatedAt
+)
+{
+  String path =
+    "devices/" + String(deviceId) +
+    "/state/current";
+
+  FirebaseJson document;
+
+  document.set(
+    "fields/processing/mapValue/fields/status/stringValue",
+    status
+  );
+
+  document.set(
+    "fields/processing/mapValue/fields/updatedAt/timestampValue",
+    updatedAt
+  );
+
+  if (Firebase.Firestore.patchDocument(
+        &_fbdo,
+        "einkcanvas",
+        "",
+        path.c_str(),
+        document.raw(),
+        "processing"
+      ))
+  {
+    _serial->println(
+      "PROCESSING: STATUS ATUALIZADO!"
+    );
+
+    return true;
+  }
+
+  _serial->println(
+    "PROCESSING: ERRO AO ATUALIZAR:"
+  );
+
+  _serial->println(
+    _fbdo.errorReason()
+  );
+
+  return false;
+}
+
 static void firebaseDownloadCallback(
   FCS_DownloadStatusInfo info
 )

@@ -2,8 +2,8 @@
 #include <Preferences.h>
 #include <Firebase_ESP_Client.h>
 
-#define WIFI_SSID "OJEDA"
-#define WIFI_PASSWORD "mateus118"
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
 #define API_KEY "AIzaSyCzNPNS0mugUk31NpC1XGKKZjR6qQPHF50"
 
@@ -33,7 +33,6 @@ void setup()
   Serial.println();
   Serial.println("Wi-Fi conectado.");
 
-
   // ============================================================
   // FIREBASE
   // ============================================================
@@ -44,7 +43,6 @@ void setup()
 
   Serial.println("Iniciando Firebase...");
 
-
   // ============================================================
   // NOVA SESSAO ANONIMA
   // ============================================================
@@ -53,18 +51,16 @@ void setup()
   Serial.println("Criando nova sessao Anonymous...");
 
   if (!Firebase.signUp(
-        &config,
-        &auth,
-        "",
-        ""
-      ))
+          &config,
+          &auth,
+          "",
+          ""))
   {
     Serial.println();
     Serial.println("ERRO AO CRIAR SESSAO:");
 
     Serial.println(
-      config.signer.signupError.message.c_str()
-    );
+        config.signer.signupError.message.c_str());
 
     return;
   }
@@ -75,7 +71,6 @@ void setup()
   Serial.print("UID: ");
   Serial.println(auth.token.uid.c_str());
 
-
   // ============================================================
   // INICIAR FIREBASE
   // ============================================================
@@ -83,7 +78,6 @@ void setup()
   Firebase.begin(&config, &auth);
 
   Serial.println("Firebase iniciado.");
-
 
   // ============================================================
   // ESPERAR AUTENTICACAO
@@ -98,8 +92,7 @@ void setup()
     if (millis() - start > 15000)
     {
       Serial.println(
-        "Timeout aguardando Firebase."
-      );
+          "Timeout aguardando Firebase.");
 
       return;
     }
@@ -107,13 +100,12 @@ void setup()
 
   Serial.println("Firebase autenticado.");
 
-
   // ============================================================
   // REFRESH TOKEN
   // ============================================================
 
-  const char* refreshToken =
-    Firebase.getRefreshToken();
+  const char *refreshToken =
+      Firebase.getRefreshToken();
 
   Serial.println();
   Serial.println("Refresh token obtido.");
@@ -122,12 +114,10 @@ void setup()
       strlen(refreshToken) == 0)
   {
     Serial.println(
-      "ERRO: refresh token vazio."
-    );
+        "ERRO: refresh token vazio.");
 
     return;
   }
-
 
   // ============================================================
   // SALVAR NO NVS
@@ -136,24 +126,21 @@ void setup()
   preferences.begin("firebase", false);
 
   size_t saved =
-    preferences.putString(
-      "refreshToken",
-      refreshToken
-    );
+      preferences.putString(
+          "refreshToken",
+          refreshToken);
 
   preferences.end();
 
   if (saved > 0)
   {
     Serial.println(
-      "Refresh token salvo no NVS."
-    );
+        "Refresh token salvo no NVS.");
   }
   else
   {
     Serial.println(
-      "ERRO: nao foi possivel salvar o refresh token."
-    );
+        "ERRO: nao foi possivel salvar o refresh token.");
   }
 
   Serial.println();

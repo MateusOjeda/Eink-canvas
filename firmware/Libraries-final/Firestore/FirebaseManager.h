@@ -30,6 +30,12 @@ public:
     const String& state
   );
 
+  bool writeProcessingStatus(
+    const char* deviceId,
+    const String& status,
+    const char* updatedAt
+  );
+
   bool downloadImage(
     const char* remotePath,
     const char* localPath
