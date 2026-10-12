@@ -31,10 +31,20 @@ import { getPhotoCollection } from "@/firebase/collections";
 import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
 
 export default function AddPhotoScreen() {
-	const { deviceId, collectionId, mode } = useLocalSearchParams<{
+	const {
+		deviceId,
+		collectionId,
+		mode,
+		selectedFileName,
+		selectedWidth,
+		selectedHeight,
+	} = useLocalSearchParams<{
 		deviceId: string;
 		collectionId?: string;
 		mode?: "collection" | "temporary";
+		selectedFileName?: string;
+		selectedWidth?: string;
+		selectedHeight?: string;
 	}>();
 
 	const photoMode = mode ?? "collection";
@@ -56,6 +66,23 @@ export default function AddPhotoScreen() {
 	const [pickingImage, setPickingImage] = useState(false);
 
 	const deviceProcessing = useDeviceProcessing();
+
+	useEffect(() => {
+		if (!selectedFileName || !selectedWidth || !selectedHeight) {
+			return;
+		}
+
+		const file = new File(Paths.cache, selectedFileName);
+
+		if (!file.exists) {
+			console.error("A foto baixada do Unsplash não foi encontrada.");
+			return;
+		}
+
+		setSelectedImageUri(file.uri);
+		setImageWidth(Number(selectedWidth));
+		setImageHeight(Number(selectedHeight));
+	}, [selectedFileName, selectedWidth, selectedHeight]);
 
 	useEffect(() => {
 		let isMounted = true;
@@ -422,18 +449,44 @@ export default function AddPhotoScreen() {
 								}
 							/>
 						) : (
-							<PrimaryButton
-								title="Escolher foto"
-								onPress={pickImage}
-								loading={pickingImage}
-								leftIcon={
-									<Feather
-										name="image"
-										size={21}
-										color={colors.white}
-									/>
-								}
-							/>
+							<>
+								<PrimaryButton
+									title="Escolher foto"
+									onPress={pickImage}
+									loading={pickingImage}
+									leftIcon={
+										<Feather
+											name="image"
+											size={21}
+											color={colors.white}
+										/>
+									}
+								/>
+								<PrimaryButton
+									title="Unsplash"
+									style={{ marginTop: spacing.md }}
+									onPress={() =>
+										router.push({
+											pathname: "/search-photo",
+											params: {
+												deviceId,
+												...(collectionId
+													? { collectionId }
+													: {}),
+												mode: photoMode,
+											},
+										})
+									}
+									loading={pickingImage}
+									leftIcon={
+										<Feather
+											name="search"
+											size={21}
+											color={colors.white}
+										/>
+									}
+								/>
+							</>
 						)}
 					</View>
 				</View>
