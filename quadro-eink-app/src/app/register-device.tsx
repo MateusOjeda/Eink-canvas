@@ -25,8 +25,6 @@ import { createDevice } from "@/firebase/devices";
 
 import type { DisplayType, DisplayOrientation } from "@/types/display";
 
-import { MIN_UPDATE_INTERVAL_MINUTES } from "@/constants/constants";
-
 type DisplayOption = {
 	value: DisplayType;
 	title: string;
@@ -40,8 +38,10 @@ type CreatedDevice = {
 	name: string;
 	displayType: DisplayType;
 	orientation: DisplayOrientation;
-	updateIntervalMinutes: number;
+	updateTimes: string[];
 };
+
+const DEFAULT_UPDATE_TIMES = ["07:00", "11:00", "21:00"];
 
 const DISPLAY_OPTIONS: DisplayOption[] = [
 	{
@@ -73,6 +73,10 @@ function getOrientationLabel(orientation: DisplayOrientation) {
 	return orientation === "portrait" ? "Retrato" : "Paisagem";
 }
 
+function isValidTime(value: string) {
+	return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
 export default function RegisterDeviceScreen() {
 	const { id, displayType, firebaseUid } = useLocalSearchParams<{
 		id: string;
@@ -85,7 +89,9 @@ export default function RegisterDeviceScreen() {
 
 	const [name, setName] = useState("");
 
-	const [updateIntervalMinutes, setUpdateIntervalMinutes] = useState("120");
+	const [updateTimes, setUpdateTimes] = useState<string[]>([
+		...DEFAULT_UPDATE_TIMES,
+	]);
 
 	const [saving, setSaving] = useState(false);
 
@@ -93,14 +99,27 @@ export default function RegisterDeviceScreen() {
 		null,
 	);
 
+	const updateTime = (index: number, value: string) => {
+		setUpdateTimes((current) =>
+			current.map((time, i) => (i === index ? value : time)),
+		);
+	};
+
+	const addUpdateTime = () => {
+		setUpdateTimes((current) => [...current, ""]);
+	};
+
+	const removeUpdateTime = (index: number) => {
+		setUpdateTimes((current) => current.filter((_, i) => i !== index));
+	};
+
 	const saveDevice = async () => {
 		const deviceName = name.trim();
 
-		const interval = Number(updateIntervalMinutes);
+		const normalizedTimes = updateTimes.map((time) => time.trim());
 
 		if (!id) {
 			Alert.alert("ID obrigatório", "Digite o ID do dispositivo.");
-
 			return;
 		}
 
@@ -109,21 +128,34 @@ export default function RegisterDeviceScreen() {
 				"Nome obrigatório",
 				"Digite um nome para o dispositivo.",
 			);
-
 			return;
 		}
 
-		if (
-			!Number.isInteger(interval) ||
-			interval < MIN_UPDATE_INTERVAL_MINUTES
-		) {
+		if (normalizedTimes.length === 0) {
 			Alert.alert(
-				"Intervalo inválido",
-				`O intervalo mínimo de atualização é de ${MIN_UPDATE_INTERVAL_MINUTES} minutos.`,
+				"Horários obrigatórios",
+				"Adicione pelo menos um horário de atualização.",
 			);
-
 			return;
 		}
+
+		if (normalizedTimes.some((time) => !isValidTime(time))) {
+			Alert.alert(
+				"Horário inválido",
+				"Use o formato HH:MM, por exemplo 07:30.",
+			);
+			return;
+		}
+
+		if (new Set(normalizedTimes).size !== normalizedTimes.length) {
+			Alert.alert(
+				"Horários duplicados",
+				"Cada horário deve ser diferente.",
+			);
+			return;
+		}
+
+		const sortedTimes = [...normalizedTimes].sort();
 
 		try {
 			setSaving(true);
@@ -133,7 +165,7 @@ export default function RegisterDeviceScreen() {
 				name: deviceName,
 				displayType,
 				orientation,
-				updateIntervalMinutes: interval,
+				updateTimes: sortedTimes,
 				deviceAuthUid: firebaseUid,
 			});
 
@@ -141,7 +173,7 @@ export default function RegisterDeviceScreen() {
 				name: deviceName,
 				displayType,
 				orientation,
-				updateIntervalMinutes: interval,
+				updateTimes: sortedTimes,
 			});
 		} catch (error) {
 			console.error(error);
@@ -154,12 +186,6 @@ export default function RegisterDeviceScreen() {
 			setSaving(false);
 		}
 	};
-
-	const interval = Number(updateIntervalMinutes);
-
-	const invalidInterval =
-		updateIntervalMinutes.length > 0 &&
-		(!Number.isInteger(interval) || interval < MIN_UPDATE_INTERVAL_MINUTES);
 
 	if (createdDevice) {
 		const selectedDisplay = getDisplayOption(createdDevice.displayType);
@@ -227,8 +253,8 @@ export default function RegisterDeviceScreen() {
 								</Text>
 
 								<Text style={styles.summaryMeta}>
-									Intervalo:{" "}
-									{createdDevice.updateIntervalMinutes} min
+									Atualizações:{" "}
+									{createdDevice.updateTimes.join(", ")}
 								</Text>
 							</View>
 						</View>
@@ -379,7 +405,6 @@ export default function RegisterDeviceScreen() {
 
 						<View style={styles.orientationContent}>
 							<View style={styles.portraitIcon} />
-
 							<Text style={styles.orientationText}>Retrato</Text>
 						</View>
 
@@ -411,7 +436,6 @@ export default function RegisterDeviceScreen() {
 
 						<View style={styles.orientationContent}>
 							<View style={styles.landscapeIcon} />
-
 							<Text style={styles.orientationText}>Paisagem</Text>
 						</View>
 
@@ -419,28 +443,74 @@ export default function RegisterDeviceScreen() {
 					</Pressable>
 				</View>
 
-				<Text style={styles.label}>
-					Intervalo entre fotos (minutos)
+				<Text style={styles.label}>Horários de atualização</Text>
+
+				<Text style={styles.scheduleDescription}>
+					Escolha os horários em que seu quadro deve sincronizar e
+					atualizar a imagem.
 				</Text>
 
-				<TextInput
-					value={updateIntervalMinutes}
-					onChangeText={setUpdateIntervalMinutes}
-					keyboardType="number-pad"
-					placeholder="120"
-					placeholderTextColor={colors.textMuted}
-					style={[styles.input, invalidInterval && styles.inputError]}
-				/>
+				{updateTimes.map((time, index) => {
+					const invalid = time.length > 0 && !isValidTime(time);
 
-				<Text
-					style={[
-						styles.helperText,
-						invalidInterval && styles.errorText,
+					return (
+						<View key={index} style={styles.scheduleRow}>
+							<Feather
+								name="clock"
+								size={18}
+								color={colors.textSecondary}
+							/>
+
+							<TextInput
+								value={time}
+								onChangeText={(value) =>
+									updateTime(index, value)
+								}
+								placeholder="HH:MM"
+								placeholderTextColor={colors.textMuted}
+								keyboardType="numbers-and-punctuation"
+								maxLength={5}
+								style={[
+									styles.input,
+									styles.timeInput,
+									invalid && styles.inputError,
+								]}
+							/>
+
+							<Pressable
+								accessibilityRole="button"
+								accessibilityLabel={`Remover horário ${index + 1}`}
+								hitSlop={8}
+								onPress={() => removeUpdateTime(index)}
+								style={({ pressed }) => [
+									styles.removeTimeButton,
+									pressed && styles.pressed,
+								]}
+							>
+								<Feather
+									name="trash-2"
+									size={19}
+									color={colors.danger}
+								/>
+							</Pressable>
+						</View>
+					);
+				})}
+
+				<Pressable
+					accessibilityRole="button"
+					onPress={addUpdateTime}
+					style={({ pressed }) => [
+						styles.addTimeButton,
+						pressed && styles.pressed,
 					]}
 				>
-					{invalidInterval
-						? `O mínimo é ${MIN_UPDATE_INTERVAL_MINUTES} minutos.`
-						: `Mínimo: ${MIN_UPDATE_INTERVAL_MINUTES} min`}
+					<Feather name="plus" size={18} color={colors.primary} />
+					<Text style={styles.addTimeText}>Adicionar horário</Text>
+				</Pressable>
+
+				<Text style={styles.helperText}>
+					Os horários são definidos no formato de 24 horas.
 				</Text>
 
 				<PrimaryButton
@@ -621,14 +691,51 @@ const styles = StyleSheet.create({
 		borderRadius: 2,
 	},
 
+	scheduleDescription: {
+		marginBottom: spacing.md,
+		...typography.body,
+		color: colors.textSecondary,
+	},
+
+	scheduleRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.md,
+		marginBottom: spacing.sm,
+	},
+
+	timeInput: {
+		flex: 1,
+		minHeight: 48,
+	},
+
+	removeTimeButton: {
+		width: 44,
+		height: 44,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	addTimeButton: {
+		minHeight: 44,
+		flexDirection: "row",
+		alignItems: "center",
+		alignSelf: "flex-start",
+		gap: spacing.sm,
+		paddingHorizontal: spacing.sm,
+		marginTop: spacing.xs,
+	},
+
+	addTimeText: {
+		...typography.body,
+		fontWeight: "600",
+		color: colors.primary,
+	},
+
 	helperText: {
 		marginTop: spacing.xs,
 		...typography.caption,
 		color: colors.textMuted,
-	},
-
-	errorText: {
-		color: colors.danger,
 	},
 
 	addButton: {

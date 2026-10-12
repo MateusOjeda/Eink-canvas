@@ -1,12 +1,12 @@
 #include "SDManager.h"
 #include <ArduinoJson.h>
 
-#define SD_CS   48
+#define SD_CS 48
 #define SD_MOSI 47
 #define SD_MISO 13
-#define SD_SCK  21
+#define SD_SCK 21
 
-bool SDManager::begin(Stream& serial)
+bool SDManager::begin(Stream &serial)
 {
   SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
 
@@ -38,12 +38,12 @@ bool SDManager::begin(Stream& serial)
   return true;
 }
 
-bool SDManager::exists(const char* path)
+bool SDManager::exists(const char *path)
 {
   return SD.exists(path);
 }
 
-uint64_t SDManager::size(const char* path)
+uint64_t SDManager::size(const char *path)
 {
   File file = SD.open(path, FILE_READ);
 
@@ -57,35 +57,10 @@ uint64_t SDManager::size(const char* path)
   return fileSize;
 }
 
-bool SDManager::getUpdateIntervalMinutes(uint32_t& minutes)
-{
-  File file = SD.open("/config.json", FILE_READ);
-
-  if (!file)
-    return false;
-
-  JsonDocument doc;
-
-  DeserializationError error = deserializeJson(doc, file);
-
-  file.close();
-
-  if (error)
-    return false;
-
-  if (!doc["updateIntervalMinutes"].is<uint32_t>())
-    return false;
-
-  minutes = doc["updateIntervalMinutes"].as<uint32_t>();
-
-  return true;
-}
-
 bool SDManager::write(
-  const char* path,
-  const uint8_t* data,
-  size_t size
-)
+    const char *path,
+    const uint8_t *data,
+    size_t size)
 {
   File file = SD.open(path, FILE_WRITE);
 
@@ -100,10 +75,9 @@ bool SDManager::write(
 }
 
 bool SDManager::append(
-  const char* path,
-  const uint8_t* data,
-  size_t size
-)
+    const char *path,
+    const uint8_t *data,
+    size_t size)
 {
   File file = SD.open(path, FILE_APPEND);
 
@@ -118,10 +92,9 @@ bool SDManager::append(
 }
 
 size_t SDManager::read(
-  const char* path,
-  uint8_t* buffer,
-  size_t size
-)
+    const char *path,
+    uint8_t *buffer,
+    size_t size)
 {
   File file = SD.open(path, FILE_READ);
 
@@ -135,12 +108,12 @@ size_t SDManager::read(
   return bytesRead;
 }
 
-bool SDManager::remove(const char* path)
+bool SDManager::remove(const char *path)
 {
   return SD.remove(path);
 }
 
-bool SDManager::test(Stream& serial)
+bool SDManager::test(Stream &serial)
 {
   File file = SD.open("/teste.bin", FILE_READ);
 

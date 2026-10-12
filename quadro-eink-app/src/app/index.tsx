@@ -250,13 +250,14 @@ export default function HomeScreen() {
 													size={18}
 													color={colors.textSecondary}
 												/>
-
-												<Text style={styles.metaText}>
-													Intervalo:{" "}
-													{
-														device.updateIntervalMinutes
-													}{" "}
-													min
+												<Text
+													style={styles.metaText}
+													numberOfLines={1}
+													ellipsizeMode="tail"
+												>
+													{device.updateTimes.join(
+														" · ",
+													)}
 												</Text>
 											</View>
 										</Pressable>

@@ -26,9 +26,11 @@ import { getDevice, updateDevice } from "@/firebase/devices";
 
 import type { DisplayOrientation } from "@/types/display";
 
-import { MIN_UPDATE_INTERVAL_MINUTES } from "@/constants/constants";
-
 import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
+function isValidTime(value: string) {
+	return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
 
 export default function EditDeviceScreen() {
 	const { deviceId } = useLocalSearchParams<{
@@ -40,7 +42,7 @@ export default function EditDeviceScreen() {
 
 	const [name, setName] = useState("");
 
-	const [updateIntervalMinutes, setUpdateIntervalMinutes] = useState("");
+	const [updateTimes, setUpdateTimes] = useState<string[]>([]);
 
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
@@ -62,8 +64,10 @@ export default function EditDeviceScreen() {
 				setName(device.name);
 				setOrientation(device.orientation);
 
-				setUpdateIntervalMinutes(
-					device.updateIntervalMinutes.toString(),
+				setUpdateTimes(
+					device.updateTimes?.length
+						? [...device.updateTimes].sort()
+						: [],
 				);
 			} catch (error) {
 				console.error(error);
@@ -77,37 +81,34 @@ export default function EditDeviceScreen() {
 		loadDevice();
 	}, [deviceId]);
 
-	const interval = Number(updateIntervalMinutes);
-
-	const invalidInterval =
-		updateIntervalMinutes.length > 0 &&
-		(!Number.isInteger(interval) || interval < MIN_UPDATE_INTERVAL_MINUTES);
+	const invalidTimes =
+		updateTimes.some((time) => !isValidTime(time)) ||
+		new Set(updateTimes).size !== updateTimes.length;
 
 	const canSave =
 		Boolean(name.trim()) &&
-		!invalidInterval &&
-		updateIntervalMinutes.length > 0 &&
+		updateTimes.length > 0 &&
+		!invalidTimes &&
 		!saving;
 
 	const save = async () => {
 		const trimmedName = name.trim();
 
-		const parsedInterval = Number(updateIntervalMinutes);
-
-		if (
-			!Number.isInteger(parsedInterval) ||
-			parsedInterval < MIN_UPDATE_INTERVAL_MINUTES
-		) {
-			Alert.alert(
-				"Intervalo inválido",
-				`O intervalo mínimo de atualização é de ${MIN_UPDATE_INTERVAL_MINUTES} minutos.`,
-			);
+		if (!trimmedName) {
+			Alert.alert("Nome obrigatório", "Digite um nome para o quadro.");
 
 			return;
 		}
 
-		if (!trimmedName) {
-			Alert.alert("Nome obrigatório", "Digite um nome para o quadro.");
+		if (
+			updateTimes.length === 0 ||
+			updateTimes.some((time) => !isValidTime(time)) ||
+			new Set(updateTimes).size !== updateTimes.length
+		) {
+			Alert.alert(
+				"Horários inválidos",
+				"Adicione pelo menos um horário válido, sem duplicatas. Use o formato HH:MM.",
+			);
 
 			return;
 		}
@@ -118,7 +119,7 @@ export default function EditDeviceScreen() {
 			await updateDevice(deviceId, {
 				name: trimmedName,
 				orientation,
-				updateIntervalMinutes: parsedInterval,
+				updateTimes: [...updateTimes].sort(),
 			});
 
 			router.back();
@@ -288,32 +289,91 @@ export default function EditDeviceScreen() {
 						</Pressable>
 					</View>
 
-					<Text style={styles.label}>
-						Intervalo entre fotos (minutos)
+					<Text style={styles.label}>Horários das atualizações</Text>
+
+					<Text style={styles.helperText}>
+						O quadro atualizará as fotos nestes horários, todos os
+						dias.
 					</Text>
 
-					<TextInput
-						value={updateIntervalMinutes}
-						onChangeText={setUpdateIntervalMinutes}
-						keyboardType="number-pad"
-						placeholder="120"
-						placeholderTextColor={colors.textMuted}
-						style={[
-							styles.input,
-							invalidInterval && styles.inputError,
-						]}
-					/>
+					{updateTimes.map((time, index) => (
+						<View key={index} style={styles.scheduleRow}>
+							<View style={styles.scheduleIcon}>
+								<Ionicons
+									name="time-outline"
+									size={22}
+									color={colors.primaryPressed}
+								/>
+							</View>
 
-					<Text
-						style={[
-							styles.helperText,
-							invalidInterval && styles.errorText,
+							<TextInput
+								value={time}
+								onChangeText={(value) =>
+									setUpdateTimes((current) =>
+										current.map((item, i) =>
+											i === index ? value : item,
+										),
+									)
+								}
+								keyboardType="numbers-and-punctuation"
+								placeholder="07:00"
+								placeholderTextColor={colors.textMuted}
+								style={[
+									styles.input,
+									styles.timeInput,
+									time.length > 0 &&
+										!isValidTime(time) &&
+										styles.inputError,
+								]}
+								maxLength={5}
+							/>
+
+							<Pressable
+								onPress={() =>
+									setUpdateTimes((current) =>
+										current.filter((_, i) => i !== index),
+									)
+								}
+								accessibilityRole="button"
+								accessibilityLabel={`Remover horário ${time || index + 1}`}
+								hitSlop={8}
+								style={styles.removeTimeButton}
+							>
+								<Ionicons
+									name="trash-outline"
+									size={20}
+									color={colors.danger}
+								/>
+							</Pressable>
+						</View>
+					))}
+
+					{invalidTimes && (
+						<Text style={[styles.helperText, styles.errorText]}>
+							Use horários válidos no formato HH:MM, sem
+							duplicatas.
+						</Text>
+					)}
+
+					<Pressable
+						onPress={() =>
+							setUpdateTimes((current) => [...current, ""])
+						}
+						style={({ pressed }) => [
+							styles.addTimeButton,
+							pressed && styles.pressed,
 						]}
 					>
-						{invalidInterval
-							? `O mínimo é ${MIN_UPDATE_INTERVAL_MINUTES} minutos.`
-							: `Mínimo: ${MIN_UPDATE_INTERVAL_MINUTES} min`}
-					</Text>
+						<Ionicons
+							name="add-circle-outline"
+							size={21}
+							color={colors.primaryPressed}
+						/>
+
+						<Text style={styles.addTimeText}>
+							Adicionar horário
+						</Text>
+					</Pressable>
 
 					<PrimaryButton
 						title="Salvar alterações"
@@ -479,6 +539,45 @@ const styles = StyleSheet.create({
 		height: 10,
 		borderRadius: radius.pill,
 		backgroundColor: colors.primary,
+	},
+
+	scheduleRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: spacing.md,
+		marginTop: spacing.sm,
+	},
+
+	scheduleIcon: {
+		width: 40,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	timeInput: {
+		flex: 1,
+	},
+
+	removeTimeButton: {
+		width: 44,
+		height: 48,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+
+	addTimeButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		alignSelf: "flex-start",
+		gap: spacing.sm,
+		paddingVertical: spacing.md,
+		marginTop: spacing.xs,
+	},
+
+	addTimeText: {
+		...typography.body,
+		fontWeight: "600",
+		color: colors.primaryPressed,
 	},
 
 	saveButton: {

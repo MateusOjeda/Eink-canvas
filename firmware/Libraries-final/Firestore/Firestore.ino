@@ -10,11 +10,11 @@
 #include "Display_EPD_W21.h"
 #include "Display_EPD_W21_spi.h"
 
-#define EPD_CS   2
-#define EPD_DC   3
-#define EPD_RST  4
+#define EPD_CS 2
+#define EPD_DC 3
+#define EPD_RST 4
 #define EPD_BUSY 5
-#define EPD_SCK  12
+#define EPD_SCK 12
 #define EPD_MOSI 11
 
 #define IMAGE_SIZE 192000
@@ -33,13 +33,12 @@ TextRenderer textRenderer;
 uint32_t nextSleepMinutes = 0;
 String deviceId;
 
-#define BUTTON_SYNC  46  // Botao 2
-#define BUTTON_NEXT   9  // Botao 3 - acorda o ESP
-#define BUTTON_INFO  41  // Botao 12
-#define BUTTON_WIFI  42  // Botao 11
+#define BUTTON_SYNC 46 // Botao 2
+#define BUTTON_3 9     // Botao 3 - acorda o ESP
+#define BUTTON_INFO 41 // Botao 12
+#define BUTTON_WIFI 42 // Botao 11
 
 #define displayRatePeriod 120
-
 
 // ============================================================
 // FUNCOES DE APOIO
@@ -49,19 +48,181 @@ uint32_t minutesUntilNextDay()
 {
   time_t now = time(nullptr);
 
-  struct tm* timeinfo = localtime(&now);
+  struct tm *timeinfo = localtime(&now);
 
   timeinfo->tm_hour = 0;
   timeinfo->tm_min = 0;
   timeinfo->tm_sec = 0;
 
   time_t nextDay =
-    mktime(timeinfo) + 24 * 60 * 60;
+      mktime(timeinfo) + 24 * 60 * 60;
 
   uint32_t seconds =
-    (uint32_t)(nextDay - now);
+      (uint32_t)(nextDay - now);
 
   return (seconds + 59) / 60;
+}
+
+bool secondsUntilNextScheduledUpdate(uint64_t &secondsUntilNext)
+{
+  secondsUntilNext = 0;
+
+  if (!sd.exists("/config.json"))
+  {
+    Serial.println("SCHEDULE: config.json nao encontrado.");
+    return false;
+  }
+
+  uint64_t fileSize = sd.size("/config.json");
+
+  if (fileSize == 0)
+  {
+    Serial.println("SCHEDULE: config.json vazio.");
+    return false;
+  }
+
+  char *buffer = new char[fileSize + 1];
+
+  if (buffer == nullptr)
+  {
+    Serial.println("SCHEDULE: erro de memoria.");
+    return false;
+  }
+
+  size_t bytesRead = sd.read(
+      "/config.json",
+      (uint8_t *)buffer,
+      fileSize);
+
+  if (bytesRead != fileSize)
+  {
+    delete[] buffer;
+    Serial.println("SCHEDULE: erro ao ler config.json.");
+    return false;
+  }
+
+  buffer[bytesRead] = '\0';
+
+  FirebaseJson config;
+
+  if (!config.setJsonData(buffer))
+  {
+    delete[] buffer;
+    Serial.println("SCHEDULE: JSON invalido.");
+    return false;
+  }
+
+  delete[] buffer;
+
+  FirebaseJsonData updateTimesData;
+
+  if (!config.get(updateTimesData, "updateTimes"))
+  {
+    Serial.println("SCHEDULE: updateTimes nao encontrado.");
+    return false;
+  }
+
+  FirebaseJsonArray updateTimes;
+
+  if (!updateTimesData.getArray(updateTimes))
+  {
+    Serial.println("SCHEDULE: updateTimes nao e um array.");
+    return false;
+  }
+
+  time_t now = time(nullptr);
+
+  if (now <= 0)
+  {
+    Serial.println("SCHEDULE: relogio nao sincronizado.");
+    return false;
+  }
+
+  struct tm currentTime;
+
+  if (localtime_r(&now, &currentTime) == nullptr)
+  {
+    Serial.println("SCHEDULE: erro ao obter horario local.");
+    return false;
+  }
+
+  bool found = false;
+  uint64_t shortestSeconds = UINT64_MAX;
+
+  for (size_t i = 0; i < updateTimes.size(); i++)
+  {
+    FirebaseJsonData timeData;
+
+    if (!updateTimes.get(timeData, i))
+      continue;
+
+    String scheduledTime = timeData.to<String>();
+
+    if (scheduledTime.length() != 5 ||
+        scheduledTime.charAt(2) != ':')
+    {
+      Serial.print("SCHEDULE: horario invalido: ");
+      Serial.println(scheduledTime);
+      continue;
+    }
+
+    int hour = scheduledTime.substring(0, 2).toInt();
+    int minute = scheduledTime.substring(3, 5).toInt();
+
+    if (hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59)
+    {
+      Serial.print("SCHEDULE: horario invalido: ");
+      Serial.println(scheduledTime);
+      continue;
+    }
+
+    struct tm candidate = currentTime;
+
+    candidate.tm_hour = hour;
+    candidate.tm_min = minute;
+    candidate.tm_sec = 0;
+    candidate.tm_isdst = -1;
+
+    time_t candidateTimestamp = mktime(&candidate);
+
+    // Se o horario de hoje ja passou, considerar amanha.
+    if (candidateTimestamp <= now)
+    {
+      candidate.tm_mday++;
+      candidate.tm_isdst = -1;
+
+      candidateTimestamp = mktime(&candidate);
+    }
+
+    if (candidateTimestamp <= now)
+      continue;
+
+    uint64_t secondsRemaining =
+        (uint64_t)(candidateTimestamp - now);
+
+    if (!found || secondsRemaining < shortestSeconds)
+    {
+      found = true;
+      shortestSeconds = secondsRemaining;
+    }
+  }
+
+  if (!found)
+  {
+    Serial.println("SCHEDULE: nenhum horario valido.");
+    return false;
+  }
+
+  secondsUntilNext = shortestSeconds;
+
+  Serial.print("SCHEDULE: proxima atualizacao em ");
+  Serial.print(secondsUntilNext / 3600);
+  Serial.print("h ");
+  Serial.print((secondsUntilNext % 3600) / 60);
+  Serial.println("min.");
+
+  return true;
 }
 
 bool canUpdateDisplay()
@@ -78,7 +239,7 @@ bool canUpdateDisplay()
     return true;
   }
 
-  char* buffer = new char[fileSize + 1];
+  char *buffer = new char[fileSize + 1];
 
   if (!buffer)
   {
@@ -87,10 +248,9 @@ bool canUpdateDisplay()
   }
 
   size_t bytesRead = sd.read(
-    "/display.json",
-    (uint8_t*)buffer,
-    fileSize
-  );
+      "/display.json",
+      (uint8_t *)buffer,
+      fileSize);
 
   buffer[bytesRead] = '\0';
 
@@ -125,23 +285,20 @@ bool canUpdateDisplay()
   time_t elapsed = now - lastUpdate;
 
   Serial.printf(
-    "Ultimo update do display: %ld segundos atras\n",
-    (long)elapsed
-  );
+      "Ultimo update do display: %ld segundos atras\n",
+      (long)elapsed);
 
   if (elapsed < displayRatePeriod)
   {
     Serial.printf(
-      "Display bloqueado. Faltam %ld segundos.\n",
-      (long)(displayRatePeriod - elapsed)
-    );
+        "Display bloqueado. Faltam %ld segundos.\n",
+        (long)(displayRatePeriod - elapsed));
 
     return false;
   }
 
   return true;
 }
-
 
 bool recordDisplayUpdate()
 {
@@ -165,10 +322,9 @@ bool recordDisplayUpdate()
   }
 
   bool success = sd.write(
-    "/display.json",
-    (const uint8_t*)output.c_str(),
-    output.length()
-  );
+      "/display.json",
+      (const uint8_t *)output.c_str(),
+      output.length());
 
   if (!success)
   {
@@ -182,55 +338,48 @@ bool recordDisplayUpdate()
   return true;
 }
 
-
 bool writeStateFirebase()
 {
   String stateOutput;
 
   stateJson.toString(
-    stateOutput,
-    false
-  );
+      stateOutput,
+      false);
 
   deviceId = WiFi.macAddress();
 
   return firebase.writeState(
-    deviceId.c_str(),
-    stateOutput
-  );
+      deviceId.c_str(),
+      stateOutput);
 }
 
 bool setProcessingStatus(
-  const String& deviceId,
-  const String& status
-)
+    const String &deviceId,
+    const String &status)
 {
   String timestamp =
-    getCurrentTimestamp();
+      getCurrentTimestamp();
 
   if (timestamp.length() == 0)
   {
     Serial.println(
-      "PROCESSING: nao foi possivel obter timestamp."
-    );
+        "PROCESSING: nao foi possivel obter timestamp.");
 
     return false;
   }
 
   return firebase.writeProcessingStatus(
-    deviceId.c_str(),
-    status,
-    timestamp.c_str()
-  );
+      deviceId.c_str(),
+      status,
+      timestamp.c_str());
 }
 
 bool syncClock()
 {
   configTzTime(
-    "America/Sao_Paulo",
-    "pool.ntp.org",
-    "time.nist.gov"
-  );
+      "America/Sao_Paulo",
+      "pool.ntp.org",
+      "time.nist.gov");
 
   struct tm timeInfo;
 
@@ -245,7 +394,6 @@ bool syncClock()
   return true;
 }
 
-
 String getCurrentTimestamp()
 {
   time_t now = time(nullptr);
@@ -253,24 +401,21 @@ String getCurrentTimestamp()
   struct tm timeInfo;
 
   gmtime_r(
-    &now,
-    &timeInfo
-  );
+      &now,
+      &timeInfo);
 
   char timestamp[25];
 
   strftime(
-    timestamp,
-    sizeof(timestamp),
-    "%Y-%m-%dT%H:%M:%SZ",
-    &timeInfo
-  );
+      timestamp,
+      sizeof(timestamp),
+      "%Y-%m-%dT%H:%M:%SZ",
+      &timeInfo);
 
   return String(timestamp);
 }
 
-
-time_t parseTimestamp(const String& timestamp)
+time_t parseTimestamp(const String &timestamp)
 {
   int year;
   int month;
@@ -280,17 +425,15 @@ time_t parseTimestamp(const String& timestamp)
   int second;
 
   if (
-    sscanf(
-      timestamp.c_str(),
-      "%d-%d-%dT%d:%d:%dZ",
-      &year,
-      &month,
-      &day,
-      &hour,
-      &minute,
-      &second
-    ) != 6
-  )
+      sscanf(
+          timestamp.c_str(),
+          "%d-%d-%dT%d:%d:%dZ",
+          &year,
+          &month,
+          &day,
+          &hour,
+          &minute,
+          &second) != 6)
   {
     return 0;
   }
@@ -302,31 +445,26 @@ time_t parseTimestamp(const String& timestamp)
     days += 365;
 
     if (
-      (y % 4 == 0 && y % 100 != 0) ||
-      (y % 400 == 0)
-    )
+        (y % 4 == 0 && y % 100 != 0) ||
+        (y % 400 == 0))
     {
       days++;
     }
   }
 
   const int daysInMonth[] =
-  {
-    31, 28, 31, 30, 31, 30,
-    31, 31, 30, 31, 30, 31
-  };
+      {
+          31, 28, 31, 30, 31, 30,
+          31, 31, 30, 31, 30, 31};
 
   for (int m = 1; m < month; m++)
   {
     days += daysInMonth[m - 1];
 
     if (
-      m == 2 &&
-      (
-        (year % 4 == 0 && year % 100 != 0) ||
-        (year % 400 == 0)
-      )
-    )
+        m == 2 &&
+        ((year % 4 == 0 && year % 100 != 0) ||
+         (year % 400 == 0)))
     {
       days++;
     }
@@ -334,25 +472,22 @@ time_t parseTimestamp(const String& timestamp)
 
   days += day - 1;
 
-  return
-    (time_t)days * 86400 +
-    hour * 3600 +
-    minute * 60 +
-    second;
+  return (time_t)days * 86400 +
+         hour * 3600 +
+         minute * 60 +
+         second;
 }
-
 
 // ============================================================
 // DISPLAY
 // ============================================================
 
-bool displayTextScreen(const String& text)
+bool displayTextScreen(const String &text)
 {
   if (!canUpdateDisplay())
   {
     Serial.println(
-      "INFO: atualizacao bloqueada. Menos de 2 minutos desde a ultima atualizacao."
-    );
+        "INFO: atualizacao bloqueada. Menos de 2 minutos desde a ultima atualizacao.");
 
     return false;
   }
@@ -360,30 +495,27 @@ bool displayTextScreen(const String& text)
   const int width = 800;
   const int height = 480;
 
-  uint8_t* imageData =
-    (uint8_t*)malloc(IMAGE_SIZE);
+  uint8_t *imageData =
+      (uint8_t *)malloc(IMAGE_SIZE);
 
   if (imageData == nullptr)
   {
     Serial.println(
-      "INFO: nao foi possivel reservar memoria."
-    );
+        "INFO: nao foi possivel reservar memoria.");
 
     return false;
   }
 
   if (!textRenderer.render(
-        imageData,
-        width,
-        height,
-        text,
-        black,
-        white
-      ))
+          imageData,
+          width,
+          height,
+          text,
+          black,
+          white))
   {
     Serial.println(
-      "INFO: erro ao renderizar texto."
-    );
+        "INFO: erro ao renderizar texto.");
 
     free(imageData);
 
@@ -393,19 +525,16 @@ bool displayTextScreen(const String& text)
   SPI.end();
 
   SPI.begin(
-    EPD_SCK,
-    -1,
-    EPD_MOSI,
-    EPD_CS
-  );
+      EPD_SCK,
+      -1,
+      EPD_MOSI,
+      EPD_CS);
 
   SPI.beginTransaction(
-    SPISettings(
-      10000000,
-      MSBFIRST,
-      SPI_MODE0
-    )
-  );
+      SPISettings(
+          10000000,
+          MSBFIRST,
+          SPI_MODE0));
 
   EPD_init_fast();
 
@@ -414,8 +543,7 @@ bool displayTextScreen(const String& text)
   for (int i = 0; i < IMAGE_SIZE; i++)
   {
     EPD_W21_WriteDATA(
-      imageData[i]
-    );
+        imageData[i]);
   }
 
   EPD_W21_WriteCMD(0x12);
@@ -436,8 +564,7 @@ bool displayTextScreen(const String& text)
   if (!sd.begin(Serial))
   {
     Serial.println(
-      "INFO: erro ao reinicializar SD."
-    );
+        "INFO: erro ao reinicializar SD.");
 
     return false;
   }
@@ -445,22 +572,18 @@ bool displayTextScreen(const String& text)
   recordDisplayUpdate();
 
   Serial.println(
-    "INFO: tela exibida."
-  );
+      "INFO: tela exibida.");
 
   return true;
 }
 
-
 bool displayImageFromSD(
-  const char* filename
-)
+    const char *filename)
 {
   if (!canUpdateDisplay())
   {
     Serial.println(
-      "UPDATE: atualizacao nao disponivel - periodo de refresh respeitado"
-    );
+        "UPDATE: atualizacao nao disponivel - periodo de refresh respeitado");
 
     return false;
   }
@@ -468,15 +591,13 @@ bool displayImageFromSD(
   Serial.println("Abrindo arquivo...");
 
   File file = SD.open(
-    filename,
-    FILE_READ
-  );
+      filename,
+      FILE_READ);
 
   if (!file)
   {
     Serial.println(
-      "ERRO: nao foi possivel abrir o arquivo."
-    );
+        "ERRO: nao foi possivel abrir o arquivo.");
 
     return false;
   }
@@ -488,22 +609,20 @@ bool displayImageFromSD(
   if (file.size() != IMAGE_SIZE)
   {
     Serial.println(
-      "ERRO: tamanho do arquivo diferente de 192000 bytes."
-    );
+        "ERRO: tamanho do arquivo diferente de 192000 bytes.");
 
     file.close();
 
     return false;
   }
 
-  uint8_t* imageData =
-    (uint8_t*)malloc(IMAGE_SIZE);
+  uint8_t *imageData =
+      (uint8_t *)malloc(IMAGE_SIZE);
 
   if (imageData == nullptr)
   {
     Serial.println(
-      "ERRO: nao foi possivel reservar memoria."
-    );
+        "ERRO: nao foi possivel reservar memoria.");
 
     file.close();
 
@@ -513,10 +632,9 @@ bool displayImageFromSD(
   Serial.println("Memoria reservada.");
 
   size_t bytesRead =
-    file.read(
-      imageData,
-      IMAGE_SIZE
-    );
+      file.read(
+          imageData,
+          IMAGE_SIZE);
 
   file.close();
 
@@ -528,8 +646,7 @@ bool displayImageFromSD(
   if (bytesRead != IMAGE_SIZE)
   {
     Serial.println(
-      "ERRO: leitura incompleta."
-    );
+        "ERRO: leitura incompleta.");
 
     free(imageData);
 
@@ -537,9 +654,7 @@ bool displayImageFromSD(
   }
 
   Serial.println(
-    "Arquivo lido completamente."
-  );
-
+      "Arquivo lido completamente.");
 
   // ============================================================
   // SPI DO SD → EPD
@@ -548,61 +663,49 @@ bool displayImageFromSD(
   SPI.end();
 
   Serial.println(
-    "SPI do SD encerrado."
-  );
+      "SPI do SD encerrado.");
 
   SPI.begin(
-    EPD_SCK,
-    -1,
-    EPD_MOSI,
-    EPD_CS
-  );
+      EPD_SCK,
+      -1,
+      EPD_MOSI,
+      EPD_CS);
 
   SPI.beginTransaction(
-    SPISettings(
-      10000000,
-      MSBFIRST,
-      SPI_MODE0
-    )
-  );
+      SPISettings(
+          10000000,
+          MSBFIRST,
+          SPI_MODE0));
 
   Serial.println(
-    "SPI do EPD configurado."
-  );
-
+      "SPI do EPD configurado.");
 
   // ============================================================
   // INICIALIZA EPD
   // ============================================================
 
   Serial.println(
-    "Inicializando EPD..."
-  );
+      "Inicializando EPD...");
 
   EPD_init_fast();
 
   Serial.println(
-    "EPD inicializado."
-  );
-
+      "EPD inicializado.");
 
   // ============================================================
   // ENVIA IMAGEM
   // ============================================================
 
   Serial.println(
-    "Enviando imagem..."
-  );
+      "Enviando imagem...");
 
   EPD_W21_WriteCMD(0x10);
 
   for (int i = 0; i < IMAGE_SIZE; i++)
   {
     EPD_W21_WriteDATA(
-      imageData[i]
-    );
+        imageData[i]);
   }
-
 
   // ============================================================
   // ATUALIZA TELA
@@ -615,15 +718,12 @@ bool displayImageFromSD(
   delay(1);
 
   Serial.println(
-    "Aguardando refresh..."
-  );
+      "Aguardando refresh...");
 
   lcd_chkstatus();
 
   Serial.println(
-    "Imagem exibida."
-  );
-
+      "Imagem exibida.");
 
   // ============================================================
   // EPD SLEEP - SD SPI Begin
@@ -632,8 +732,7 @@ bool displayImageFromSD(
   EPD_sleep();
 
   Serial.println(
-    "EPD em sleep."
-  );
+      "EPD em sleep.");
 
   SPI.endTransaction();
 
@@ -642,8 +741,7 @@ bool displayImageFromSD(
   if (!sd.begin(Serial))
   {
     Serial.println(
-      "ERRO: nao foi possivel inicializar o SD."
-    );
+        "ERRO: nao foi possivel inicializar o SD.");
 
     free(imageData);
 
@@ -655,26 +753,22 @@ bool displayImageFromSD(
   free(imageData);
 
   Serial.println(
-    "Memoria liberada."
-  );
+      "Memoria liberada.");
 
   return true;
 }
 
-
 bool showPhoto(
-  const String& imageId,
-  const String& epaperFilePath
-)
+    const String &imageId,
+    const String &epaperFilePath)
 {
   Serial.println("=== SHOW PHOTO ===");
 
   String localPath =
-    "/" + imageId + ".bin";
+      "/" + imageId + ".bin";
 
   Serial.print("Arquivo local: ");
   Serial.println(localPath);
-
 
   // ============================================================
   // VERIFICAR ARQUIVO LOCAL
@@ -685,41 +779,35 @@ bool showPhoto(
   if (sd.exists(localPath.c_str()))
   {
     uint64_t localSize =
-      sd.size(localPath.c_str());
+        sd.size(localPath.c_str());
 
     Serial.print(
-      "Imagem ja existe no SD. Tamanho: "
-    );
+        "Imagem ja existe no SD. Tamanho: ");
 
     Serial.print(localSize);
 
     Serial.println(
-      " bytes"
-    );
+        " bytes");
 
     if (localSize == IMAGE_SIZE)
     {
       needsDownload = false;
 
       Serial.println(
-        "Imagem local valida."
-      );
+          "Imagem local valida.");
     }
     else
     {
       Serial.println(
-        "Imagem local incompleta ou corrompida."
-      );
+          "Imagem local incompleta ou corrompida.");
 
       Serial.println(
-        "Removendo arquivo para baixar novamente..."
-      );
+          "Removendo arquivo para baixar novamente...");
 
       if (!sd.remove(localPath.c_str()))
       {
         Serial.println(
-          "ERRO: nao foi possivel remover arquivo invalido."
-        );
+            "ERRO: nao foi possivel remover arquivo invalido.");
 
         return false;
       }
@@ -728,10 +816,8 @@ bool showPhoto(
   else
   {
     Serial.println(
-      "Imagem nao encontrada no SD."
-    );
+        "Imagem nao encontrada no SD.");
   }
-
 
   // ============================================================
   // DOWNLOAD
@@ -740,25 +826,20 @@ bool showPhoto(
   if (needsDownload)
   {
     Serial.println(
-      "Baixando imagem do Firebase Storage..."
-    );
+        "Baixando imagem do Firebase Storage...");
 
     if (!firebase.downloadImage(
-          epaperFilePath.c_str(),
-          localPath.c_str()
-        ))
+            epaperFilePath.c_str(),
+            localPath.c_str()))
     {
       Serial.println(
-        "ERRO: nao foi possivel baixar a imagem."
-      );
+          "ERRO: nao foi possivel baixar a imagem.");
 
       return false;
     }
 
     Serial.println(
-      "Download concluido."
-    );
-
+        "Download concluido.");
 
     // ==========================================================
     // VALIDAR DOWNLOAD
@@ -767,36 +848,30 @@ bool showPhoto(
     if (!sd.exists(localPath.c_str()))
     {
       Serial.println(
-        "ERRO: arquivo nao apareceu no SD apos download."
-      );
+          "ERRO: arquivo nao apareceu no SD apos download.");
 
       return false;
     }
 
     uint64_t downloadedSize =
-      sd.size(localPath.c_str());
+        sd.size(localPath.c_str());
 
     Serial.print(
-      "Tamanho apos download: "
-    );
+        "Tamanho apos download: ");
 
     Serial.print(
-      downloadedSize
-    );
+        downloadedSize);
 
     Serial.println(
-      " bytes"
-    );
+        " bytes");
 
     if (downloadedSize != IMAGE_SIZE)
     {
       Serial.println(
-        "ERRO: download incompleto ou invalido."
-      );
+          "ERRO: download incompleto ou invalido.");
 
       Serial.println(
-        "Removendo arquivo invalido."
-      );
+          "Removendo arquivo invalido.");
 
       sd.remove(localPath.c_str());
 
@@ -804,83 +879,69 @@ bool showPhoto(
     }
 
     Serial.println(
-      "Download validado."
-    );
+        "Download validado.");
   }
-
 
   // ============================================================
   // MOSTRAR IMAGEM NO DISPLAY
   // ============================================================
 
   Serial.println(
-    "Exibindo imagem no E-Paper..."
-  );
+      "Exibindo imagem no E-Paper...");
 
   if (!displayImageFromSD(
-        localPath.c_str()
-      ))
+          localPath.c_str()))
   {
     Serial.println(
-      "ERRO: nao foi possivel exibir a imagem."
-    );
+        "ERRO: nao foi possivel exibir a imagem.");
 
     return false;
   }
 
   Serial.println(
-    "Imagem exibida com sucesso."
-  );
+      "Imagem exibida com sucesso.");
 
   return true;
 }
-
 
 // ============================================================
 // INFO - OBTER DESCRICAO DA IMAGEM ATUAL
 // ============================================================
 
 bool getCurrentImageDescription(
-  String& description,
-  const String& photosJsonString
-)
+    String &description,
+    const String &photosJsonString)
 {
   description = "";
 
   FirebaseJsonData currentImageData;
 
   if (!stateJson.get(
-        currentImageData,
-        "currentImageId"
-      ))
+          currentImageData,
+          "currentImageId"))
   {
     Serial.println(
-      "INFO: currentImageId nao encontrado."
-    );
+        "INFO: currentImageId nao encontrado.");
 
     return false;
   }
 
   String currentImageId =
-    currentImageData.to<String>();
+      currentImageData.to<String>();
 
   if (currentImageId.length() == 0)
   {
     Serial.println(
-      "INFO: nenhuma imagem atual."
-    );
+        "INFO: nenhuma imagem atual.");
 
     return false;
   }
 
   Serial.print(
-    "INFO: imagem atual: "
-  );
+      "INFO: imagem atual: ");
 
   Serial.println(
-    currentImageId
-  );
-
+      currentImageId);
 
   // ============================================================
   // PHOTOS
@@ -889,16 +950,13 @@ bool getCurrentImageDescription(
   FirebaseJson photosJson;
 
   if (!photosJson.setJsonData(
-        photosJsonString
-      ))
+          photosJsonString))
   {
     Serial.println(
-      "INFO: dados de photos invalidos."
-    );
+        "INFO: dados de photos invalidos.");
 
     return false;
   }
-
 
   // ============================================================
   // COLLECTIONS
@@ -907,13 +965,11 @@ bool getCurrentImageDescription(
   FirebaseJsonData collectionsData;
 
   if (!photosJson.get(
-        collectionsData,
-        "collections"
-      ))
+          collectionsData,
+          "collections"))
   {
     Serial.println(
-      "INFO: collections nao encontrado."
-    );
+        "INFO: collections nao encontrado.");
 
     return false;
   }
@@ -921,33 +977,28 @@ bool getCurrentImageDescription(
   FirebaseJsonArray collections;
 
   if (!collectionsData.getArray(
-        collections
-      ))
+          collections))
   {
     Serial.println(
-      "INFO: erro ao ler collections."
-    );
+        "INFO: erro ao ler collections.");
 
     return false;
   }
-
 
   // ============================================================
   // PROCURAR IMAGEM
   // ============================================================
 
   for (
-    size_t i = 0;
-    i < collections.size();
-    i++
-  )
+      size_t i = 0;
+      i < collections.size();
+      i++)
   {
     FirebaseJsonData collectionData;
 
     if (!collections.get(
-          collectionData,
-          i
-        ))
+            collectionData,
+            i))
     {
       continue;
     }
@@ -955,8 +1006,7 @@ bool getCurrentImageDescription(
     FirebaseJson collection;
 
     if (!collectionData.getJSON(
-          collection
-        ))
+            collection))
     {
       continue;
     }
@@ -964,9 +1014,8 @@ bool getCurrentImageDescription(
     FirebaseJsonData imagesData;
 
     if (!collection.get(
-          imagesData,
-          "images"
-        ))
+            imagesData,
+            "images"))
     {
       continue;
     }
@@ -974,29 +1023,25 @@ bool getCurrentImageDescription(
     FirebaseJsonArray images;
 
     if (!imagesData.getArray(
-          images
-        ))
+            images))
     {
       continue;
     }
-
 
     // ==========================================================
     // PROCURAR IMAGEM DENTRO DA COLECAO
     // ==========================================================
 
     for (
-      size_t j = 0;
-      j < images.size();
-      j++
-    )
+        size_t j = 0;
+        j < images.size();
+        j++)
     {
       FirebaseJsonData imageData;
 
       if (!images.get(
-            imageData,
-            j
-          ))
+              imageData,
+              j))
       {
         continue;
       }
@@ -1004,8 +1049,7 @@ bool getCurrentImageDescription(
       FirebaseJson image;
 
       if (!imageData.getJSON(
-            image
-          ))
+              image))
       {
         continue;
       }
@@ -1013,21 +1057,19 @@ bool getCurrentImageDescription(
       FirebaseJsonData imageIdData;
 
       if (!image.get(
-            imageIdData,
-            "id"
-          ))
+              imageIdData,
+              "id"))
       {
         continue;
       }
 
       String imageId =
-        imageIdData.to<String>();
+          imageIdData.to<String>();
 
       if (imageId != currentImageId)
       {
         continue;
       }
-
 
       // ========================================================
       // ENCONTRAMOS A IMAGEM
@@ -1036,48 +1078,41 @@ bool getCurrentImageDescription(
       FirebaseJsonData descriptionData;
 
       if (!image.get(
-            descriptionData,
-            "description"
-          ))
+              descriptionData,
+              "description"))
       {
         Serial.println(
-          "INFO: imagem nao possui campo description."
-        );
+            "INFO: imagem nao possui campo description.");
 
         return false;
       }
 
       description =
-        descriptionData.to<String>();
+          descriptionData.to<String>();
 
       if (description.length() == 0)
       {
         Serial.println(
-          "INFO: campo description esta vazio."
-        );
+            "INFO: campo description esta vazio.");
 
         return false;
       }
 
       Serial.println(
-        "INFO: descricao encontrada:"
-      );
+          "INFO: descricao encontrada:");
 
       Serial.println(
-        description
-      );
+          description);
 
       return true;
     }
   }
 
   Serial.println(
-    "INFO: imagem atual nao encontrada em photos."
-  );
+      "INFO: imagem atual nao encontrada em photos.");
 
   return false;
 }
-
 
 // ============================================================
 // STATE
@@ -1088,14 +1123,12 @@ bool loadState()
   if (!sd.exists("/state.json"))
   {
     Serial.println(
-      "STATE: arquivo nao existe. Criando estado inicial."
-    );
+        "STATE: arquivo nao existe. Criando estado inicial.");
 
     stateJson.clear();
 
     stateJson.setJsonData(
-      "{\"lastCollectionId\":\"\",\"currentImageId\":\"\",\"displayHistory\":[]}"
-    );
+        "{\"lastCollectionId\":\"\",\"currentImageId\":\"\",\"displayHistory\":[]}");
 
     return true;
   }
@@ -1105,47 +1138,41 @@ bool loadState()
   if (fileSize == 0)
   {
     Serial.println(
-      "STATE: arquivo vazio. Criando estado inicial."
-    );
+        "STATE: arquivo vazio. Criando estado inicial.");
 
     stateJson.clear();
 
     stateJson.setJsonData(
-      "{\"lastCollectionId\":\"\",\"currentImageId\":\"\",\"displayHistory\":[]}"
-    );
+        "{\"lastCollectionId\":\"\",\"currentImageId\":\"\",\"displayHistory\":[]}");
 
     return true;
   }
 
-  uint8_t* buffer =
-    new uint8_t[fileSize + 1];
+  uint8_t *buffer =
+      new uint8_t[fileSize + 1];
 
   if (!buffer)
   {
     Serial.println(
-      "STATE: erro ao alocar memoria."
-    );
+        "STATE: erro ao alocar memoria.");
 
     return false;
   }
 
   size_t bytesRead = sd.read(
-    "/state.json",
-    buffer,
-    fileSize
-  );
+      "/state.json",
+      buffer,
+      fileSize);
 
   buffer[bytesRead] = '\0';
 
   stateJson.clear();
 
   if (!stateJson.setJsonData(
-        (char*)buffer
-      ))
+          (char *)buffer))
   {
     Serial.println(
-      "STATE: JSON invalido."
-    );
+        "STATE: JSON invalido.");
 
     delete[] buffer;
 
@@ -1155,27 +1182,22 @@ bool loadState()
   delete[] buffer;
 
   Serial.println(
-    "STATE: carregado."
-  );
+      "STATE: carregado.");
 
   String stateOutput;
 
   stateJson.toString(
-    stateOutput,
-    false
-  );
+      stateOutput,
+      false);
 
   Serial.println(
-    "=== STATE JSON ==="
-  );
+      "=== STATE JSON ===");
 
   Serial.println(
-    stateOutput
-  );
+      stateOutput);
 
   return true;
 }
-
 
 bool saveState()
 {
@@ -1184,9 +1206,8 @@ bool saveState()
   String output;
 
   stateJson.toString(
-    output,
-    false
-  );
+      output,
+      false);
 
   Serial.println("SAVE: 2 - JSON convertido");
 
@@ -1209,14 +1230,12 @@ bool saveState()
   Serial.println("SAVE: 5 - antes do sd.write");
 
   if (!sd.write(
-        "/state.json",
-        (const uint8_t*)output.c_str(),
-        output.length()
-      ))
+          "/state.json",
+          (const uint8_t *)output.c_str(),
+          output.length()))
   {
     Serial.println(
-      "STATE: erro ao salvar /state.json."
-    );
+        "STATE: erro ao salvar /state.json.");
 
     return false;
   }
@@ -1224,33 +1243,28 @@ bool saveState()
   Serial.println("SAVE: 6 - sd.write OK");
 
   Serial.println(
-    "STATE: /state.json salvo."
-  );
+      "STATE: /state.json salvo.");
 
   return true;
 }
-
 
 // ============================================================
 // REGISTRAR FOTO EXIBIDA
 // ============================================================
 
 bool recordDisplayedPhoto(
-  const String& imageId
-)
+    const String &imageId)
 {
   Serial.println("HISTORY: - Start recordDisplayedPhoto()");
 
   FirebaseJsonData historyData;
 
   if (!stateJson.get(
-        historyData,
-        "displayHistory"
-      ))
+          historyData,
+          "displayHistory"))
   {
     Serial.println(
-      "STATE: displayHistory nao encontrado."
-    );
+        "STATE: displayHistory nao encontrado.");
 
     return false;
   }
@@ -1262,8 +1276,7 @@ bool recordDisplayedPhoto(
   if (!historyData.getArray(history))
   {
     Serial.println(
-      "STATE: erro ao ler displayHistory."
-    );
+        "STATE: erro ao ler displayHistory.");
 
     return false;
   }
@@ -1273,27 +1286,24 @@ bool recordDisplayedPhoto(
   FirebaseJson newItem;
 
   String timestamp =
-    getCurrentTimestamp();
+      getCurrentTimestamp();
 
   Serial.println("HISTORY: - timestamp OK");
 
   newItem.set(
-    "imageId",
-    imageId
-  );
+      "imageId",
+      imageId);
 
   newItem.set(
-    "lastDisplayedAt",
-    timestamp
-  );
+      "lastDisplayedAt",
+      timestamp);
 
   Serial.println("HISTORY: - novo item OK");
 
   FirebaseJsonArray newHistory;
 
   newHistory.add(
-    newItem
-  );
+      newItem);
 
   Serial.println("HISTORY: - novo historico iniciado");
 
@@ -1305,9 +1315,8 @@ bool recordDisplayedPhoto(
     FirebaseJsonData historyItemData;
 
     if (!history.get(
-          historyItemData,
-          i
-        ))
+            historyItemData,
+            i))
     {
       continue;
     }
@@ -1315,8 +1324,7 @@ bool recordDisplayedPhoto(
     FirebaseJson historyItem;
 
     if (!historyItemData.getJSON(
-          historyItem
-        ))
+            historyItem))
     {
       continue;
     }
@@ -1324,43 +1332,38 @@ bool recordDisplayedPhoto(
     FirebaseJsonData historyImageIdData;
 
     if (!historyItem.get(
-          historyImageIdData,
-          "imageId"
-        ))
+            historyImageIdData,
+            "imageId"))
     {
       continue;
     }
 
     String historyImageId =
-      historyImageIdData.to<String>();
+        historyImageIdData.to<String>();
 
     if (historyImageId == imageId)
       continue;
 
     newHistory.add(
-      historyItem
-    );
+        historyItem);
   }
 
   Serial.println("HISTORY: - loop terminado");
 
   stateJson.set(
-    "currentImageId",
-    imageId
-  );
+      "currentImageId",
+      imageId);
 
   Serial.println("HISTORY: - currentImageId OK");
 
   stateJson.set(
-    "displayHistory",
-    newHistory
-  );
+      "displayHistory",
+      newHistory);
 
   Serial.println("HISTORY: - displayHistory OK");
 
   Serial.println(
-    "=== DISPLAY HISTORY ATUALIZADO ==="
-  );
+      "=== DISPLAY HISTORY ATUALIZADO ===");
 
   Serial.print("Imagem: ");
   Serial.println(imageId);
@@ -1380,7 +1383,6 @@ bool recordDisplayedPhoto(
   return result;
 }
 
-
 // ============================================================
 // ESPERA BOTAO
 // ============================================================
@@ -1395,19 +1397,17 @@ void waitButtonRelease(int pin)
   delay(50);
 }
 
-
 // ============================================================
 // CHOOSE PRIORITY PHOTO
 // ============================================================
 
 bool choosePriorityPhoto(
-  String& outputImageId,
-  String& outputEpaperFilePath,
-  const String& priorityCollectionId,
-  const String& priorityImageId,
-  bool hasPriority,
-  const String& photosJsonString
-)
+    String &outputImageId,
+    String &outputEpaperFilePath,
+    const String &priorityCollectionId,
+    const String &priorityImageId,
+    bool hasPriority,
+    const String &photosJsonString)
 {
   outputImageId = "";
   outputEpaperFilePath = "";
@@ -1418,56 +1418,49 @@ bool choosePriorityPhoto(
   }
 
   Serial.println(
-    "=== CHOOSE PRIORITY PHOTO ==="
-  );
-
+      "=== CHOOSE PRIORITY PHOTO ===");
 
   // ============================================================
   // CONFIG
   // ============================================================
 
   uint64_t configFileSize =
-    sd.size("/config.json");
+      sd.size("/config.json");
 
   if (configFileSize == 0)
   {
     Serial.println(
-      "PRIORITY: /config.json nao existe ou esta vazio."
-    );
+        "PRIORITY: /config.json nao existe ou esta vazio.");
 
     return false;
   }
 
-  uint8_t* configBuffer =
-    new uint8_t[configFileSize + 1];
+  uint8_t *configBuffer =
+      new uint8_t[configFileSize + 1];
 
   if (!configBuffer)
   {
     Serial.println(
-      "PRIORITY: erro ao alocar memoria."
-    );
+        "PRIORITY: erro ao alocar memoria.");
 
     return false;
   }
 
   size_t configBytesRead =
-    sd.read(
-      "/config.json",
-      configBuffer,
-      configFileSize
-    );
+      sd.read(
+          "/config.json",
+          configBuffer,
+          configFileSize);
 
   configBuffer[configBytesRead] = '\0';
 
   FirebaseJson configJson;
 
   if (!configJson.setJsonData(
-        (char*)configBuffer
-      ))
+          (char *)configBuffer))
   {
     Serial.println(
-      "PRIORITY: config JSON invalido."
-    );
+        "PRIORITY: config JSON invalido.");
 
     delete[] configBuffer;
 
@@ -1479,19 +1472,17 @@ bool choosePriorityPhoto(
   FirebaseJsonData orientationData;
 
   if (!configJson.get(
-        orientationData,
-        "orientation"
-      ))
+          orientationData,
+          "orientation"))
   {
     Serial.println(
-      "PRIORITY: orientation nao encontrado."
-    );
+        "PRIORITY: orientation nao encontrado.");
 
     return false;
   }
 
   String orientation =
-    orientationData.to<String>();
+      orientationData.to<String>();
 
   int requiredWidth;
   int requiredHeight;
@@ -1509,12 +1500,10 @@ bool choosePriorityPhoto(
   else
   {
     Serial.println(
-      "PRIORITY: orientation invalida."
-    );
+        "PRIORITY: orientation invalida.");
 
     return false;
   }
-
 
   // ============================================================
   // PHOTOS
@@ -1523,12 +1512,10 @@ bool choosePriorityPhoto(
   FirebaseJson photosJson;
 
   if (!photosJson.setJsonData(
-        photosJsonString
-      ))
+          photosJsonString))
   {
     Serial.println(
-      "PRIORITY: dados de photos invalidos."
-    );
+        "PRIORITY: dados de photos invalidos.");
 
     return false;
   }
@@ -1536,13 +1523,11 @@ bool choosePriorityPhoto(
   FirebaseJsonData collectionsData;
 
   if (!photosJson.get(
-        collectionsData,
-        "collections"
-      ))
+          collectionsData,
+          "collections"))
   {
     Serial.println(
-      "PRIORITY: collections nao encontrado."
-    );
+        "PRIORITY: collections nao encontrado.");
 
     return false;
   }
@@ -1550,16 +1535,13 @@ bool choosePriorityPhoto(
   FirebaseJsonArray collections;
 
   if (!collectionsData.getArray(
-        collections
-      ))
+          collections))
   {
     Serial.println(
-      "PRIORITY: erro ao ler collections."
-    );
+        "PRIORITY: erro ao ler collections.");
 
     return false;
   }
-
 
   // ============================================================
   // PROCURAR COLECAO DA PRIORIDADE
@@ -1572,9 +1554,8 @@ bool choosePriorityPhoto(
     FirebaseJsonData collectionData;
 
     if (!collections.get(
-          collectionData,
-          i
-        ))
+            collectionData,
+            i))
     {
       continue;
     }
@@ -1582,8 +1563,7 @@ bool choosePriorityPhoto(
     FirebaseJson collection;
 
     if (!collectionData.getJSON(
-          collection
-        ))
+            collection))
     {
       continue;
     }
@@ -1593,15 +1573,14 @@ bool choosePriorityPhoto(
     FirebaseJsonData imagesData;
 
     if (!collection.get(
-          collectionIdData,
-          "id"
-        ))
+            collectionIdData,
+            "id"))
     {
       continue;
     }
 
     String collectionId =
-      collectionIdData.to<String>();
+        collectionIdData.to<String>();
 
     if (collectionId !=
         priorityCollectionId)
@@ -1610,13 +1589,11 @@ bool choosePriorityPhoto(
     }
 
     if (!collection.get(
-          collectionActiveData,
-          "active"
-        ))
+            collectionActiveData,
+            "active"))
     {
       Serial.println(
-        "PRIORITY: colecao sem campo active."
-      );
+          "PRIORITY: colecao sem campo active.");
 
       return false;
     }
@@ -1624,20 +1601,17 @@ bool choosePriorityPhoto(
     if (!collectionActiveData.to<bool>())
     {
       Serial.println(
-        "PRIORITY: colecao inativa."
-      );
+          "PRIORITY: colecao inativa.");
 
       return false;
     }
 
     if (!collection.get(
-          imagesData,
-          "images"
-        ))
+            imagesData,
+            "images"))
     {
       Serial.println(
-        "PRIORITY: images nao encontrado."
-      );
+          "PRIORITY: images nao encontrado.");
 
       return false;
     }
@@ -1647,12 +1621,10 @@ bool choosePriorityPhoto(
     if (!imagesData.getArray(images))
     {
       Serial.println(
-        "PRIORITY: erro ao ler images."
-      );
+          "PRIORITY: erro ao ler images.");
 
       return false;
     }
-
 
     // ==========================================================
     // PROCURAR IMAGEM DA PRIORIDADE
@@ -1665,9 +1637,8 @@ bool choosePriorityPhoto(
       FirebaseJsonData imageData;
 
       if (!images.get(
-            imageData,
-            j
-          ))
+              imageData,
+              j))
       {
         continue;
       }
@@ -1686,15 +1657,14 @@ bool choosePriorityPhoto(
       FirebaseJsonData epaperFilePathData;
 
       if (!image.get(
-            imageIdData,
-            "id"
-          ))
+              imageIdData,
+              "id"))
       {
         continue;
       }
 
       String imageId =
-        imageIdData.to<String>();
+          imageIdData.to<String>();
 
       if (imageId !=
           priorityImageId)
@@ -1703,13 +1673,11 @@ bool choosePriorityPhoto(
       }
 
       if (!image.get(
-            activeData,
-            "active"
-          ))
+              activeData,
+              "active"))
       {
         Serial.println(
-          "PRIORITY: imagem sem campo active."
-        );
+            "PRIORITY: imagem sem campo active.");
 
         return false;
       }
@@ -1717,136 +1685,114 @@ bool choosePriorityPhoto(
       if (!activeData.to<bool>())
       {
         Serial.println(
-          "PRIORITY: imagem inativa."
-        );
+            "PRIORITY: imagem inativa.");
 
         return false;
       }
 
       if (!image.get(
-            widthData,
-            "width"
-          ))
+              widthData,
+              "width"))
       {
         Serial.println(
-          "PRIORITY: imagem sem width."
-        );
+            "PRIORITY: imagem sem width.");
 
         return false;
       }
 
       if (!image.get(
-            heightData,
-            "height"
-          ))
+              heightData,
+              "height"))
       {
         Serial.println(
-          "PRIORITY: imagem sem height."
-        );
+            "PRIORITY: imagem sem height.");
 
         return false;
       }
 
       if (widthData.to<int>() !=
-          requiredWidth ||
+              requiredWidth ||
           heightData.to<int>() !=
-          requiredHeight)
+              requiredHeight)
       {
         Serial.println(
-          "PRIORITY: dimensao incompativel."
-        );
+            "PRIORITY: dimensao incompativel.");
 
         return false;
       }
 
       if (!image.get(
-            epaperFilePathData,
-            "epaperFilePath"
-          ))
+              epaperFilePathData,
+              "epaperFilePath"))
       {
         Serial.println(
-          "PRIORITY: imagem sem epaperFilePath."
-        );
+            "PRIORITY: imagem sem epaperFilePath.");
 
         return false;
       }
-
 
       // ========================================================
       // RESULTADO
       // ========================================================
 
       outputImageId =
-        imageId;
+          imageId;
 
       outputEpaperFilePath =
-        epaperFilePathData.to<String>();
+          epaperFilePathData.to<String>();
 
       stateJson.set(
-        "lastCollectionId",
-        collectionId
-      );
+          "lastCollectionId",
+          collectionId);
 
       Serial.println(
-        "=== FOTO PRIORITARIA ESCOLHIDA ==="
-      );
+          "=== FOTO PRIORITARIA ESCOLHIDA ===");
 
       Serial.print(
-        "Collection ID: "
-      );
+          "Collection ID: ");
 
       Serial.println(
-        collectionId
-      );
+          collectionId);
 
       Serial.print(
-        "Image ID: "
-      );
+          "Image ID: ");
 
       Serial.println(
-        outputImageId
-      );
+          outputImageId);
 
       Serial.print(
-        "Epaper file path: "
-      );
+          "Epaper file path: ");
 
       Serial.println(
-        outputEpaperFilePath
-      );
+          outputEpaperFilePath);
 
       return true;
     }
 
     Serial.println(
-      "PRIORITY: imagem nao encontrada na colecao."
-    );
+        "PRIORITY: imagem nao encontrada na colecao.");
 
     return false;
   }
-
 
   // ============================================================
   // COLECAO NAO ENCONTRADA
   // ============================================================
 
   Serial.println(
-    "PRIORITY: colecao nao encontrada."
-  );
+      "PRIORITY: colecao nao encontrada.");
 
   return false;
 }
-
 
 // ============================================================
 // CHOOSE TEMPORARY PHOTO
 // ============================================================
 
 bool chooseTemporaryPhoto(
-  String& outputImageId,
-  String& outputEpaperFilePath,
-  const String& temporaryPhotosJsonString
-)
+    String &outputImageId,
+    String &outputEpaperFilePath,
+    const String &temporaryPhotosJsonString)
 {
   outputImageId = "";
   outputEpaperFilePath = "";
@@ -1860,50 +1806,44 @@ bool chooseTemporaryPhoto(
   if (!sd.exists("/config.json"))
   {
     Serial.println(
-      "TEMPORARY: /config.json não existe."
-    );
+        "TEMPORARY: /config.json não existe.");
 
     return false;
   }
 
   uint64_t configSize = sd.size(
-    "/config.json"
-  );
+      "/config.json");
 
   if (configSize == 0)
   {
     Serial.println(
-      "TEMPORARY: /config.json está vazio."
-    );
+        "TEMPORARY: /config.json está vazio.");
 
     return false;
   }
 
-  uint8_t* configBuffer =
-    new uint8_t[configSize + 1];
+  uint8_t *configBuffer =
+      new uint8_t[configSize + 1];
 
   if (!configBuffer)
   {
     Serial.println(
-      "TEMPORARY: erro de memória."
-    );
+        "TEMPORARY: erro de memória.");
 
     return false;
   }
 
   size_t configRead = sd.read(
-    "/config.json",
-    configBuffer,
-    configSize
-  );
+      "/config.json",
+      configBuffer,
+      configSize);
 
   if (configRead != configSize)
   {
     delete[] configBuffer;
 
     Serial.println(
-      "TEMPORARY: erro ao ler /config.json."
-    );
+        "TEMPORARY: erro ao ler /config.json.");
 
     return false;
   }
@@ -1911,7 +1851,7 @@ bool chooseTemporaryPhoto(
   configBuffer[configRead] = '\0';
 
   String configJson =
-    String((char*)configBuffer);
+      String((char *)configBuffer);
 
   delete[] configBuffer;
 
@@ -1921,19 +1861,17 @@ bool chooseTemporaryPhoto(
   FirebaseJsonData configData;
 
   if (!config.get(
-        configData,
-        "orientation"
-      ))
+          configData,
+          "orientation"))
   {
     Serial.println(
-      "TEMPORARY: orientation não encontrada."
-    );
+        "TEMPORARY: orientation não encontrada.");
 
     return false;
   }
 
   String orientation =
-    configData.to<String>();
+      configData.to<String>();
 
   int requiredWidth;
   int requiredHeight;
@@ -1951,8 +1889,7 @@ bool chooseTemporaryPhoto(
   else
   {
     Serial.println(
-      "TEMPORARY: orientation invalida."
-    );
+        "TEMPORARY: orientation invalida.");
 
     return false;
   }
@@ -1964,12 +1901,10 @@ bool chooseTemporaryPhoto(
   FirebaseJson json;
 
   if (!json.setJsonData(
-        temporaryPhotosJsonString
-      ))
+          temporaryPhotosJsonString))
   {
     Serial.println(
-      "TEMPORARY: dados de temporaryPhotos invalidos."
-    );
+        "TEMPORARY: dados de temporaryPhotos invalidos.");
 
     return false;
   }
@@ -1977,13 +1912,11 @@ bool chooseTemporaryPhoto(
   FirebaseJsonData photosData;
 
   if (!json.get(
-        photosData,
-        "temporaryPhotos"
-      ))
+          photosData,
+          "temporaryPhotos"))
   {
     Serial.println(
-      "TEMPORARY: lista temporaryPhotos não encontrada."
-    );
+        "TEMPORARY: lista temporaryPhotos não encontrada.");
 
     return false;
   }
@@ -1993,8 +1926,7 @@ bool chooseTemporaryPhoto(
   if (!photosData.getArray(photos))
   {
     Serial.println(
-      "TEMPORARY: erro ao ler temporaryPhotos."
-    );
+        "TEMPORARY: erro ao ler temporaryPhotos.");
 
     return false;
   }
@@ -2005,26 +1937,25 @@ bool chooseTemporaryPhoto(
 
   time_t now = time(nullptr);
 
-  struct tm* currentTime =
-    localtime(&now);
+  struct tm *currentTime =
+      localtime(&now);
 
   if (currentTime == nullptr)
   {
     Serial.println(
-      "TEMPORARY: não foi possível obter data atual."
-    );
+        "TEMPORARY: não foi possível obter data atual.");
 
     return false;
   }
 
   int currentMonth =
-    currentTime->tm_mon + 1;
+      currentTime->tm_mon + 1;
 
   int currentDay =
-    currentTime->tm_mday;
+      currentTime->tm_mday;
 
   int currentYear =
-    currentTime->tm_year + 1900;
+      currentTime->tm_year + 1900;
 
   // =========================================================
   // ONCE
@@ -2049,162 +1980,143 @@ bool chooseTemporaryPhoto(
     FirebaseJson item;
 
     item.setJsonData(
-      itemData.to<String>()
-    );
+        itemData.to<String>());
 
     FirebaseJsonData data;
 
     if (!item.get(
-          data,
-          "recurrence"
-        ))
+            data,
+            "recurrence"))
       continue;
 
     String recurrence =
-      data.to<String>();
+        data.to<String>();
 
     if (recurrence != "once")
       continue;
 
     if (!item.get(
-          data,
-          "id"
-        ))
+            data,
+            "id"))
       continue;
 
     String imageId =
-      data.to<String>();
+        data.to<String>();
 
     if (item.get(
-          data,
-          "consumedAt"
-        ))
+            data,
+            "consumedAt"))
     {
       Serial.print(
-        "TEMPORARY: ONCE ja consumida: "
-      );
+          "TEMPORARY: ONCE ja consumida: ");
 
       Serial.println(
-        imageId
-      );
+          imageId);
 
       continue;
     }
 
     if (!item.get(
-          data,
-          "durationMinutes"
-        ))
+            data,
+            "durationMinutes"))
       continue;
 
     uint32_t durationMinutes =
-      data.to<uint32_t>();
+        data.to<uint32_t>();
 
     if (!item.get(
-          data,
-          "epaperFilePath"
-        ))
+            data,
+            "epaperFilePath"))
       continue;
 
     String epaperFilePath =
-      data.to<String>();
+        data.to<String>();
 
     if (!item.get(
-          data,
-          "width"
-        ))
+            data,
+            "width"))
       continue;
 
     int width =
-      data.to<int>();
+        data.to<int>();
 
     if (!item.get(
-          data,
-          "height"
-        ))
+            data,
+            "height"))
       continue;
 
     int height =
-      data.to<int>();
+        data.to<int>();
 
     if (
-      width != requiredWidth ||
-      height != requiredHeight
-    )
+        width != requiredWidth ||
+        height != requiredHeight)
     {
       continue;
     }
 
     if (!item.get(
-          data,
-          "createdAt"
-        ))
+            data,
+            "createdAt"))
       continue;
 
     String createdAt =
-      data.to<String>();
+        data.to<String>();
 
     time_t createdTimestamp =
-      parseTimestamp(createdAt);
+        parseTimestamp(createdAt);
 
     if (createdTimestamp <= 0)
       continue;
 
     if (
-      !foundOnce ||
-      createdTimestamp < oldestOnceCreatedAt
-    )
+        !foundOnce ||
+        createdTimestamp < oldestOnceCreatedAt)
     {
       foundOnce = true;
 
       oldestOnceCreatedAt =
-        createdTimestamp;
+          createdTimestamp;
 
       selectedOnceId =
-        imageId;
+          imageId;
 
       selectedOncePath =
-        epaperFilePath;
+          epaperFilePath;
 
       selectedOnceDurationMinutes =
-        durationMinutes;
+          durationMinutes;
     }
   }
 
   if (foundOnce)
   {
     nextSleepMinutes =
-      selectedOnceDurationMinutes;
+        selectedOnceDurationMinutes;
 
     outputImageId =
-      selectedOnceId;
+        selectedOnceId;
 
     outputEpaperFilePath =
-      selectedOncePath;
+        selectedOncePath;
 
     Serial.println(
-      "TEMPORARY: encontrada ONCE válida."
-    );
+        "TEMPORARY: encontrada ONCE válida.");
 
     Serial.print(
-      "TEMPORARY: imageId = "
-    );
+        "TEMPORARY: imageId = ");
 
     Serial.println(
-      outputImageId
-    );
+        outputImageId);
 
     Serial.print(
-      "TEMPORARY: durationMinutes = "
-    );
+        "TEMPORARY: durationMinutes = ");
 
     Serial.println(
-      selectedOnceDurationMinutes
-    );
+        selectedOnceDurationMinutes);
 
     Serial.println(
-      "TEMPORARY: escolhendo ONCE mais antiga."
-    );
+        "TEMPORARY: escolhendo ONCE mais antiga.");
 
     return true;
   }
@@ -2230,61 +2142,54 @@ bool chooseTemporaryPhoto(
     FirebaseJson item;
 
     item.setJsonData(
-      itemData.to<String>()
-    );
+        itemData.to<String>());
 
     FirebaseJsonData data;
 
     if (!item.get(
-          data,
-          "recurrence"
-        ))
+            data,
+            "recurrence"))
       continue;
 
     String recurrence =
-      data.to<String>();
+        data.to<String>();
 
     if (recurrence != "yearly")
       continue;
 
     if (!item.get(
-          data,
-          "id"
-        ))
+            data,
+            "id"))
       continue;
 
     String imageId =
-      data.to<String>();
-
-    if (item.get(
-          data,
-          "consumedAt"
-        ))
-    {
-      String consumedAt =
         data.to<String>();
 
+    if (item.get(
+            data,
+            "consumedAt"))
+    {
+      String consumedAt =
+          data.to<String>();
+
       time_t consumedTimestamp =
-        parseTimestamp(consumedAt);
+          parseTimestamp(consumedAt);
 
       if (consumedTimestamp > 0)
       {
-        struct tm* consumedTime =
-          gmtime(&consumedTimestamp);
+        struct tm *consumedTime =
+            gmtime(&consumedTimestamp);
 
         if (
-          consumedTime != nullptr &&
-          (consumedTime->tm_year + 1900) ==
-          currentYear
-        )
+            consumedTime != nullptr &&
+            (consumedTime->tm_year + 1900) ==
+                currentYear)
         {
           Serial.print(
-            "TEMPORARY: YEARLY ja consumida neste ano: "
-          );
+              "TEMPORARY: YEARLY ja consumida neste ano: ");
 
           Serial.println(
-            imageId
-          );
+              imageId);
 
           continue;
         }
@@ -2292,137 +2197,121 @@ bool chooseTemporaryPhoto(
     }
 
     if (!item.get(
-          data,
-          "epaperFilePath"
-        ))
+            data,
+            "epaperFilePath"))
       continue;
 
     String epaperFilePath =
-      data.to<String>();
+        data.to<String>();
 
     if (!item.get(
-          data,
-          "width"
-        ))
+            data,
+            "width"))
       continue;
 
     int width =
-      data.to<int>();
+        data.to<int>();
 
     if (!item.get(
-          data,
-          "height"
-        ))
+            data,
+            "height"))
       continue;
 
     int height =
-      data.to<int>();
+        data.to<int>();
 
     if (
-      width != requiredWidth ||
-      height != requiredHeight
-    )
+        width != requiredWidth ||
+        height != requiredHeight)
     {
       continue;
     }
 
     if (!item.get(
-          data,
-          "yearlyDate/month"
-        ))
+            data,
+            "yearlyDate/month"))
       continue;
 
     int month =
-      data.to<int>();
+        data.to<int>();
 
     if (!item.get(
-          data,
-          "yearlyDate/day"
-        ))
+            data,
+            "yearlyDate/day"))
       continue;
 
     int day =
-      data.to<int>();
+        data.to<int>();
 
     if (
-      month != currentMonth ||
-      day != currentDay
-    )
+        month != currentMonth ||
+        day != currentDay)
     {
       continue;
     }
 
     if (!item.get(
-          data,
-          "createdAt"
-        ))
+            data,
+            "createdAt"))
       continue;
 
     String createdAt =
-      data.to<String>();
+        data.to<String>();
 
     time_t createdTimestamp =
-      parseTimestamp(createdAt);
+        parseTimestamp(createdAt);
 
     if (createdTimestamp <= 0)
       continue;
 
     if (
-      !foundYearly ||
-      createdTimestamp > newestYearlyCreatedAt
-    )
+        !foundYearly ||
+        createdTimestamp > newestYearlyCreatedAt)
     {
       foundYearly = true;
 
       newestYearlyCreatedAt =
-        createdTimestamp;
+          createdTimestamp;
 
       selectedYearlyId =
-        imageId;
+          imageId;
 
       selectedYearlyPath =
-        epaperFilePath;
+          epaperFilePath;
     }
   }
 
   if (foundYearly)
   {
     outputImageId =
-      selectedYearlyId;
+        selectedYearlyId;
 
     outputEpaperFilePath =
-      selectedYearlyPath;
+        selectedYearlyPath;
 
     Serial.println(
-      "TEMPORARY: encontrada YEARLY válida para hoje."
-    );
+        "TEMPORARY: encontrada YEARLY válida para hoje.");
 
     Serial.print(
-      "TEMPORARY: imageId = "
-    );
+        "TEMPORARY: imageId = ");
 
     Serial.println(
-      outputImageId
-    );
+        outputImageId);
 
     Serial.println(
-      "TEMPORARY: escolhendo YEARLY mais recente."
-    );
+        "TEMPORARY: escolhendo YEARLY mais recente.");
 
     nextSleepMinutes =
-      minutesUntilNextDay();
+        minutesUntilNextDay();
 
     Serial.print(
-      "TEMPORARY: YEARLY selecionada. Dormindo por "
-    );
+        "TEMPORARY: YEARLY selecionada. Dormindo por ");
 
     Serial.print(
-      nextSleepMinutes
-    );
+        nextSleepMinutes);
 
     Serial.println(
-      " minutos."
-    );
+        " minutos.");
 
     return true;
   }
@@ -2432,76 +2321,67 @@ bool chooseTemporaryPhoto(
   // =========================================================
 
   Serial.println(
-    "TEMPORARY: nenhuma foto temporária válida."
-  );
+      "TEMPORARY: nenhuma foto temporária válida.");
 
   return false;
 }
-
 
 // ============================================================
 // ESCOLHER PROXIMA FOTO
 // ============================================================
 
 bool chooseNextPhoto(
-  String& outputImageId,
-  String& outputEpaperFilePath,
-  const String& photosJsonString
-)
+    String &outputImageId,
+    String &outputEpaperFilePath,
+    const String &photosJsonString)
 {
   outputImageId = "";
   outputEpaperFilePath = "";
 
   Serial.println(
-    "=== CHOOSE NEXT PHOTO ==="
-  );
+      "=== CHOOSE NEXT PHOTO ===");
 
   // ============================================================
   // CONFIG
   // ============================================================
 
   uint64_t configFileSize =
-    sd.size("/config.json");
+      sd.size("/config.json");
 
   if (configFileSize == 0)
   {
     Serial.println(
-      "CONFIG: /config.json nao existe ou esta vazio."
-    );
+        "CONFIG: /config.json nao existe ou esta vazio.");
 
     return false;
   }
 
-  uint8_t* configBuffer =
-    new uint8_t[configFileSize + 1];
+  uint8_t *configBuffer =
+      new uint8_t[configFileSize + 1];
 
   if (!configBuffer)
   {
     Serial.println(
-      "CONFIG: erro ao alocar memoria."
-    );
+        "CONFIG: erro ao alocar memoria.");
 
     return false;
   }
 
   size_t configBytesRead =
-    sd.read(
-      "/config.json",
-      configBuffer,
-      configFileSize
-    );
+      sd.read(
+          "/config.json",
+          configBuffer,
+          configFileSize);
 
   configBuffer[configBytesRead] = '\0';
 
   FirebaseJson configJson;
 
   if (!configJson.setJsonData(
-        (char*)configBuffer
-      ))
+          (char *)configBuffer))
   {
     Serial.println(
-      "CONFIG: JSON invalido."
-    );
+        "CONFIG: JSON invalido.");
 
     delete[] configBuffer;
 
@@ -2513,19 +2393,17 @@ bool chooseNextPhoto(
   FirebaseJsonData orientationData;
 
   if (!configJson.get(
-        orientationData,
-        "orientation"
-      ))
+          orientationData,
+          "orientation"))
   {
     Serial.println(
-      "CONFIG: orientation nao encontrado."
-    );
+        "CONFIG: orientation nao encontrado.");
 
     return false;
   }
 
   String orientation =
-    orientationData.to<String>();
+      orientationData.to<String>();
 
   int requiredWidth;
   int requiredHeight;
@@ -2543,36 +2421,28 @@ bool chooseNextPhoto(
   else
   {
     Serial.println(
-      "CONFIG: orientation invalida."
-    );
+        "CONFIG: orientation invalida.");
 
     return false;
   }
 
   Serial.print(
-    "Orientacao: "
-  );
+      "Orientacao: ");
 
   Serial.println(
-    orientation
-  );
+      orientation);
 
   Serial.print(
-    "Dimensao exigida: "
-  );
+      "Dimensao exigida: ");
 
   Serial.print(
-    requiredWidth
-  );
+      requiredWidth);
 
   Serial.print(
-    "x"
-  );
+      "x");
 
   Serial.println(
-    requiredHeight
-  );
-
+      requiredHeight);
 
   // ============================================================
   // PHOTOS
@@ -2581,12 +2451,10 @@ bool chooseNextPhoto(
   FirebaseJson photosJson;
 
   if (!photosJson.setJsonData(
-        photosJsonString
-      ))
+          photosJsonString))
   {
     Serial.println(
-      "PHOTOS: dados de photos invalidos."
-    );
+        "PHOTOS: dados de photos invalidos.");
 
     return false;
   }
@@ -2594,13 +2462,11 @@ bool chooseNextPhoto(
   FirebaseJsonData collectionsData;
 
   if (!photosJson.get(
-        collectionsData,
-        "collections"
-      ))
+          collectionsData,
+          "collections"))
   {
     Serial.println(
-      "PHOTOS: collections nao encontrado."
-    );
+        "PHOTOS: collections nao encontrado.");
 
     return false;
   }
@@ -2608,23 +2474,19 @@ bool chooseNextPhoto(
   FirebaseJsonArray collections;
 
   if (!collectionsData.getArray(
-        collections
-      ))
+          collections))
   {
     Serial.println(
-      "PHOTOS: erro ao ler collections."
-    );
+        "PHOTOS: erro ao ler collections.");
 
     return false;
   }
 
   Serial.print(
-    "Colecoes encontradas: "
-  );
+      "Colecoes encontradas: ");
 
   Serial.println(
-    collections.size()
-  );
+      collections.size());
 
   // ============================================================
   // ESTADO ATUAL
@@ -2633,21 +2495,17 @@ bool chooseNextPhoto(
   FirebaseJsonData lastCollectionData;
 
   stateJson.get(
-    lastCollectionData,
-    "lastCollectionId"
-  );
+      lastCollectionData,
+      "lastCollectionId");
 
   String lastCollectionId =
-    lastCollectionData.to<String>();
+      lastCollectionData.to<String>();
 
   Serial.print(
-    "Ultima colecao: "
-  );
+      "Ultima colecao: ");
 
   Serial.println(
-    lastCollectionId
-  );
-
+      lastCollectionId);
 
   // ============================================================
   // ENCONTRAR PROXIMA COLECAO
@@ -2656,13 +2514,12 @@ bool chooseNextPhoto(
   int selectedCollectionIndex = -1;
 
   size_t collectionCount =
-    collections.size();
+      collections.size();
 
   if (collectionCount == 0)
   {
     Serial.println(
-      "PHOTOS: nenhuma colecao encontrada."
-    );
+        "PHOTOS: nenhuma colecao encontrada.");
 
     return false;
   }
@@ -2676,9 +2533,8 @@ bool chooseNextPhoto(
     FirebaseJsonData collectionData;
 
     if (!collections.get(
-          collectionData,
-          i
-        ))
+            collectionData,
+            i))
     {
       continue;
     }
@@ -2686,8 +2542,7 @@ bool chooseNextPhoto(
     FirebaseJson collection;
 
     if (!collectionData.getJSON(
-          collection
-        ))
+            collection))
     {
       continue;
     }
@@ -2695,9 +2550,8 @@ bool chooseNextPhoto(
     FirebaseJsonData idData;
 
     if (!collection.get(
-          idData,
-          "id"
-        ))
+            idData,
+            "id"))
     {
       continue;
     }
@@ -2709,7 +2563,6 @@ bool chooseNextPhoto(
       break;
     }
   }
-
 
   // ============================================================
   // PROCURAR COLECAO A PARTIR DA PROXIMA
@@ -2724,22 +2577,19 @@ bool chooseNextPhoto(
     if (lastCollectionIndex >= 0)
     {
       index =
-        (lastCollectionIndex + offset)
-        % collectionCount;
+          (lastCollectionIndex + offset) % collectionCount;
     }
     else
     {
       index =
-        (offset - 1)
-        % collectionCount;
+          (offset - 1) % collectionCount;
     }
 
     FirebaseJsonData collectionData;
 
     if (!collections.get(
-          collectionData,
-          index
-        ))
+            collectionData,
+            index))
     {
       continue;
     }
@@ -2747,8 +2597,7 @@ bool chooseNextPhoto(
     FirebaseJson collection;
 
     if (!collectionData.getJSON(
-          collection
-        ))
+            collection))
     {
       continue;
     }
@@ -2758,25 +2607,22 @@ bool chooseNextPhoto(
     FirebaseJsonData imagesData;
 
     if (!collection.get(
-          collectionIdData,
-          "id"
-        ))
+            collectionIdData,
+            "id"))
     {
       continue;
     }
 
     if (!collection.get(
-          collectionActiveData,
-          "active"
-        ))
+            collectionActiveData,
+            "active"))
     {
       continue;
     }
 
     if (!collection.get(
-          imagesData,
-          "images"
-        ))
+            imagesData,
+            "images"))
     {
       continue;
     }
@@ -2798,9 +2644,8 @@ bool chooseNextPhoto(
       FirebaseJsonData imageData;
 
       if (!images.get(
-            imageData,
-            j
-          ))
+              imageData,
+              j))
       {
         continue;
       }
@@ -2815,25 +2660,22 @@ bool chooseNextPhoto(
       FirebaseJsonData heightData;
 
       if (!image.get(
-            activeData,
-            "active"
-          ))
+              activeData,
+              "active"))
       {
         continue;
       }
 
       if (!image.get(
-            widthData,
-            "width"
-          ))
+              widthData,
+              "width"))
       {
         continue;
       }
 
       if (!image.get(
-            heightData,
-            "height"
-          ))
+              heightData,
+              "height"))
       {
         continue;
       }
@@ -2857,15 +2699,13 @@ bool chooseNextPhoto(
     if (hasValidImage)
     {
       selectedCollectionIndex =
-        index;
+          index;
 
       Serial.print(
-        "Colecao escolhida: "
-      );
+          "Colecao escolhida: ");
 
       Serial.println(
-        collectionIdData.to<String>()
-      );
+          collectionIdData.to<String>());
 
       break;
     }
@@ -2874,12 +2714,10 @@ bool chooseNextPhoto(
   if (selectedCollectionIndex < 0)
   {
     Serial.println(
-      "PHOTOS: nenhuma colecao possui imagem compativel."
-    );
+        "PHOTOS: nenhuma colecao possui imagem compativel.");
 
     return false;
   }
-
 
   // ============================================================
   // IMAGEM MENOS RECENTEMENTE EXIBIDA
@@ -2888,13 +2726,11 @@ bool chooseNextPhoto(
   FirebaseJsonData selectedCollectionData;
 
   if (!collections.get(
-        selectedCollectionData,
-        selectedCollectionIndex
-      ))
+          selectedCollectionData,
+          selectedCollectionIndex))
   {
     Serial.println(
-      "PHOTOS: erro ao ler colecao escolhida."
-    );
+        "PHOTOS: erro ao ler colecao escolhida.");
 
     return false;
   }
@@ -2902,12 +2738,10 @@ bool chooseNextPhoto(
   FirebaseJson selectedCollection;
 
   if (!selectedCollectionData.getJSON(
-        selectedCollection
-      ))
+          selectedCollection))
   {
     Serial.println(
-      "PHOTOS: erro ao interpretar colecao."
-    );
+        "PHOTOS: erro ao interpretar colecao.");
 
     return false;
   }
@@ -2915,13 +2749,11 @@ bool chooseNextPhoto(
   FirebaseJsonData selectedImagesData;
 
   if (!selectedCollection.get(
-        selectedImagesData,
-        "images"
-      ))
+          selectedImagesData,
+          "images"))
   {
     Serial.println(
-      "PHOTOS: images nao encontrado."
-    );
+        "PHOTOS: images nao encontrado.");
 
     return false;
   }
@@ -2929,16 +2761,13 @@ bool chooseNextPhoto(
   FirebaseJsonArray selectedImages;
 
   if (!selectedImagesData.getArray(
-        selectedImages
-      ))
+          selectedImages))
   {
     Serial.println(
-      "PHOTOS: erro ao ler images."
-    );
+        "PHOTOS: erro ao ler images.");
 
     return false;
   }
-
 
   // ============================================================
   // HISTORICO
@@ -2947,25 +2776,21 @@ bool chooseNextPhoto(
   FirebaseJsonData historyData;
 
   stateJson.get(
-    historyData,
-    "displayHistory"
-  );
+      historyData,
+      "displayHistory");
 
   FirebaseJsonArray history;
 
   if (!historyData.getArray(history))
   {
     Serial.println(
-      "STATE: erro ao ler displayHistory."
-    );
+        "STATE: erro ao ler displayHistory.");
 
     return false;
   }
 
-
   int selectedImageIndex = -1;
   int selectedImageHistoryPosition = -1;
-
 
   // ============================================================
   // PROCURAR IMAGEM MENOS RECENTEMENTE EXIBIDA
@@ -2978,9 +2803,8 @@ bool chooseNextPhoto(
     FirebaseJsonData imageData;
 
     if (!selectedImages.get(
-          imageData,
-          i
-        ))
+            imageData,
+            i))
     {
       continue;
     }
@@ -2996,33 +2820,29 @@ bool chooseNextPhoto(
     FirebaseJsonData heightData;
 
     if (!image.get(
-          imageIdData,
-          "id"
-        ))
+            imageIdData,
+            "id"))
     {
       continue;
     }
 
     if (!image.get(
-          activeData,
-          "active"
-        ))
+            activeData,
+            "active"))
     {
       continue;
     }
 
     if (!image.get(
-          widthData,
-          "width"
-        ))
+            widthData,
+            "width"))
     {
       continue;
     }
 
     if (!image.get(
-          heightData,
-          "height"
-        ))
+            heightData,
+            "height"))
     {
       continue;
     }
@@ -3039,8 +2859,7 @@ bool chooseNextPhoto(
       continue;
 
     String imageId =
-      imageIdData.to<String>();
-
+        imageIdData.to<String>();
 
     // ==========================================================
     // PROCURAR IMAGEM NO HISTORICO
@@ -3055,9 +2874,8 @@ bool chooseNextPhoto(
       FirebaseJsonData historyItemData;
 
       if (!history.get(
-            historyItemData,
-            h
-          ))
+              historyItemData,
+              h))
       {
         continue;
       }
@@ -3065,8 +2883,7 @@ bool chooseNextPhoto(
       FirebaseJson historyItem;
 
       if (!historyItemData.getJSON(
-            historyItem
-          ))
+              historyItem))
       {
         continue;
       }
@@ -3074,9 +2891,8 @@ bool chooseNextPhoto(
       FirebaseJsonData historyImageIdData;
 
       if (!historyItem.get(
-            historyImageIdData,
-            "imageId"
-          ))
+              historyImageIdData,
+              "imageId"))
       {
         continue;
       }
@@ -3090,7 +2906,6 @@ bool chooseNextPhoto(
       }
     }
 
-
     if (historyPosition < 0)
     {
       selectedImageIndex = i;
@@ -3100,27 +2915,24 @@ bool chooseNextPhoto(
       break;
     }
 
-
     if (selectedImageIndex < 0 ||
         historyPosition >
-        selectedImageHistoryPosition)
+            selectedImageHistoryPosition)
     {
       selectedImageIndex = i;
 
       selectedImageHistoryPosition =
-        historyPosition;
+          historyPosition;
     }
   }
 
   if (selectedImageIndex < 0)
   {
     Serial.println(
-      "PHOTOS: nenhuma imagem compativel encontrada."
-    );
+        "PHOTOS: nenhuma imagem compativel encontrada.");
 
     return false;
   }
-
 
   // ============================================================
   // OBTER IMAGEM ESCOLHIDA
@@ -3129,13 +2941,11 @@ bool chooseNextPhoto(
   FirebaseJsonData selectedImageData;
 
   if (!selectedImages.get(
-        selectedImageData,
-        selectedImageIndex
-      ))
+          selectedImageData,
+          selectedImageIndex))
   {
     Serial.println(
-      "STATE: erro ao obter imagem selecionada."
-    );
+        "STATE: erro ao obter imagem selecionada.");
 
     return false;
   }
@@ -3143,12 +2953,10 @@ bool chooseNextPhoto(
   FirebaseJson selectedImage;
 
   if (!selectedImageData.getJSON(
-        selectedImage
-      ))
+          selectedImage))
   {
     Serial.println(
-      "STATE: erro ao converter imagem selecionada."
-    );
+        "STATE: erro ao converter imagem selecionada.");
 
     return false;
   }
@@ -3157,38 +2965,33 @@ bool chooseNextPhoto(
   FirebaseJsonData epaperFilePathData;
 
   if (!selectedImage.get(
-        imageIdData,
-        "id"
-      ))
+          imageIdData,
+          "id"))
   {
     Serial.println(
-      "STATE: imagem selecionada sem id."
-    );
+        "STATE: imagem selecionada sem id.");
 
     return false;
   }
 
   if (!selectedImage.get(
-        epaperFilePathData,
-        "epaperFilePath"
-      ))
+          epaperFilePathData,
+          "epaperFilePath"))
   {
     Serial.println(
-      "STATE: imagem selecionada sem epaperFilePath."
-    );
+        "STATE: imagem selecionada sem epaperFilePath.");
 
     return false;
   }
 
   String selectedImageId =
-    imageIdData.to<String>();
+      imageIdData.to<String>();
 
   outputImageId =
-    selectedImageId;
+      selectedImageId;
 
   outputEpaperFilePath =
-    epaperFilePathData.to<String>();
-
+      epaperFilePathData.to<String>();
 
   // ============================================================
   // ATUALIZAR COLECAO ATUAL
@@ -3197,202 +3000,167 @@ bool chooseNextPhoto(
   FirebaseJsonData selectedCollectionIdData;
 
   if (!selectedCollection.get(
-        selectedCollectionIdData,
-        "id"
-      ))
+          selectedCollectionIdData,
+          "id"))
   {
     Serial.println(
-      "PHOTOS: colecao escolhida sem id."
-    );
+        "PHOTOS: colecao escolhida sem id.");
 
     return false;
   }
 
   String selectedCollectionId =
-    selectedCollectionIdData.to<String>();
+      selectedCollectionIdData.to<String>();
 
   stateJson.set(
-    "lastCollectionId",
-    selectedCollectionId
-  );
-
+      "lastCollectionId",
+      selectedCollectionId);
 
   // ============================================================
   // RESULTADO
   // ============================================================
 
   Serial.println(
-    "=== FOTO ESCOLHIDA ==="
-  );
+      "=== FOTO ESCOLHIDA ===");
 
   Serial.print(
-    "Image ID: "
-  );
+      "Image ID: ");
 
   Serial.println(
-    outputImageId
-  );
+      outputImageId);
 
   Serial.print(
-    "Epaper file path: "
-  );
+      "Epaper file path: ");
 
   Serial.println(
-    outputEpaperFilePath
-  );
+      outputEpaperFilePath);
 
   Serial.print(
-    "Imagem: "
-  );
+      "Imagem: ");
 
   Serial.println(
-    selectedImageId
-  );
+      selectedImageId);
 
   Serial.print(
-    "Posicao no historico: "
-  );
+      "Posicao no historico: ");
 
   Serial.println(
-    selectedImageHistoryPosition
-  );
+      selectedImageHistoryPosition);
 
   return true;
 }
-
 
 // ============================================================
 // CHOOSE DISPLAY PHOTO - choice logic
 // ============================================================
 
 bool chooseDisplayPhoto(
-  String& outputImageId,
-  String& outputEpaperFilePath,
-  const String& priorityCollectionId,
-  const String& priorityImageId,
-  bool hasPriority,
-  bool& outputIsTemporary,
-  const String& photosJson,
-  const String& temporaryPhotosJson
-)
+    String &outputImageId,
+    String &outputEpaperFilePath,
+    const String &priorityCollectionId,
+    const String &priorityImageId,
+    bool hasPriority,
+    bool &outputIsTemporary,
+    const String &photosJson,
+    const String &temporaryPhotosJson)
 {
   outputImageId = "";
   outputEpaperFilePath = "";
   outputIsTemporary = false;
 
   Serial.println(
-    "=== CHOOSE DISPLAY PHOTO ==="
-  );
+      "=== CHOOSE DISPLAY PHOTO ===");
 
   // PRIORIDADE
   if (choosePriorityPhoto(
-        outputImageId,
-        outputEpaperFilePath,
-        priorityCollectionId,
-        priorityImageId,
-        hasPriority,
-        photosJson
-      ))
+          outputImageId,
+          outputEpaperFilePath,
+          priorityCollectionId,
+          priorityImageId,
+          hasPriority,
+          photosJson))
   {
     Serial.println(
-      "DISPLAY: usando foto PRIORITARIA."
-    );
+        "DISPLAY: usando foto PRIORITARIA.");
 
     return true;
   }
 
   // TEMPORARIA
   if (chooseTemporaryPhoto(
-        outputImageId,
-        outputEpaperFilePath,
-        temporaryPhotosJson
-      ))
+          outputImageId,
+          outputEpaperFilePath,
+          temporaryPhotosJson))
   {
     outputIsTemporary = true;
 
     Serial.println(
-      "DISPLAY: usando foto TEMPORARIA."
-    );
+        "DISPLAY: usando foto TEMPORARIA.");
 
     return true;
   }
 
   // NORMAL
   Serial.println(
-    "DISPLAY: nenhuma prioridade ou temporaria valida."
-  );
+      "DISPLAY: nenhuma prioridade ou temporaria valida.");
 
   if (chooseNextPhoto(
-        outputImageId,
-        outputEpaperFilePath,
-        photosJson
-      ))
+          outputImageId,
+          outputEpaperFilePath,
+          photosJson))
   {
     Serial.println(
-      "DISPLAY: usando foto NORMAL."
-    );
+        "DISPLAY: usando foto NORMAL.");
 
     return true;
   }
 
   Serial.println(
-    "DISPLAY: nenhuma foto disponivel."
-  );
+      "DISPLAY: nenhuma foto disponivel.");
 
   return false;
 }
 
-
 // ============================================================
-// ROTINAS PRINCIPAIS SYNC, NEXT, INFO, WIFI
+// ROTINAS PRINCIPAIS SYNC, 3, INFO, WIFI
 // ============================================================
 
 bool syncDevice()
 {
   Serial.println(
-    "=== SYNC ==="
-  );
-
+      "=== SYNC ===");
 
   // ============================================================
   // WI-FI
   // ============================================================
 
   Serial.println(
-    "Conectando ao Wi-Fi salvo..."
-  );
+      "Conectando ao Wi-Fi salvo...");
 
   if (!wifiManager.connectToSavedWiFi())
   {
     Serial.println(
-      "ERRO: nao foi possivel conectar ao Wi-Fi salvo."
-    );
+        "ERRO: nao foi possivel conectar ao Wi-Fi salvo.");
 
     return false;
   }
 
   Serial.println(
-    "Wi-Fi conectado."
-  );
+      "Wi-Fi conectado.");
 
   Serial.print(
-    "IP: "
-  );
+      "IP: ");
 
   Serial.println(
-    WiFi.localIP()
-  );
+      WiFi.localIP());
 
   deviceId = WiFi.macAddress();
 
   Serial.print(
-    "Device ID: "
-  );
+      "Device ID: ");
 
   Serial.println(
-    deviceId
-  );
-
+      deviceId);
 
   // ============================================================
   // HORARIO
@@ -3401,7 +3169,6 @@ bool syncDevice()
   if (!syncClock())
     return false;
 
-
   // ============================================================
   // SD
   // ============================================================
@@ -3409,18 +3176,15 @@ bool syncDevice()
   Serial.println();
 
   Serial.println(
-    "=== INICIALIZANDO SD ==="
-  );
+      "=== INICIALIZANDO SD ===");
 
   if (!sd.begin(Serial))
   {
     Serial.println(
-      "ERRO: nao foi possivel inicializar o SD."
-    );
+        "ERRO: nao foi possivel inicializar o SD.");
 
     return false;
   }
-
 
   // ============================================================
   // LOAD STATE
@@ -3429,40 +3193,34 @@ bool syncDevice()
   if (!loadState())
   {
     Serial.println(
-      "ERRO: nao foi possivel carregar state."
-    );
+        "ERRO: nao foi possivel carregar state.");
 
     return false;
   }
-
 
   // ============================================================
   // FIREBASE
   // ============================================================
 
   firebase.begin(
-    API_KEY,
-    STORAGE_BUCKET_ID,
-    Serial
-  );
+      API_KEY,
+      STORAGE_BUCKET_ID,
+      Serial);
 
   if (!firebase.authenticate())
   {
     Serial.println(
-      "Autenticacao Firebase falhou."
-    );
+        "Autenticacao Firebase falhou.");
 
     return false;
   }
 
   if (!setProcessingStatus(
-        deviceId,
-        "thinking"
-      ))
+          deviceId,
+          "thinking"))
   {
     Serial.println(
-      "PROCESSING: nao foi possivel registrar thinking."
-    );
+        "PROCESSING: nao foi possivel registrar thinking.");
   }
 
   // ============================================================
@@ -3472,13 +3230,11 @@ bool syncDevice()
   String configJson;
 
   if (!firebase.readDeviceConfig(
-        deviceId.c_str(),
-        configJson
-      ))
+          deviceId.c_str(),
+          configJson))
   {
     Serial.println(
-      "ERRO: não foi possível sincronizar config."
-    );
+        "ERRO: não foi possível sincronizar config.");
 
     return false;
   }
@@ -3487,22 +3243,18 @@ bool syncDevice()
     sd.remove("/config.json");
 
   if (!sd.write(
-        "/config.json",
-        (const uint8_t*)configJson.c_str(),
-        configJson.length()
-      ))
+          "/config.json",
+          (const uint8_t *)configJson.c_str(),
+          configJson.length()))
   {
     Serial.println(
-      "ERRO: não foi possível salvar /config.json."
-    );
+        "ERRO: não foi possível salvar /config.json.");
 
     return false;
   }
 
   Serial.println(
-    "config.json salvo no SD."
-  );
-
+      "config.json salvo no SD.");
 
   // ============================================================
   // FIRESTORE - PHOTOS
@@ -3511,27 +3263,22 @@ bool syncDevice()
   Serial.println();
 
   Serial.println(
-    "=== SINCRONIZANDO PHOTOS ==="
-  );
+      "=== SINCRONIZANDO PHOTOS ===");
 
   String photosJson;
 
   if (!firebase.syncPhotos(
-        deviceId.c_str(),
-        photosJson
-      ))
+          deviceId.c_str(),
+          photosJson))
   {
     Serial.println(
-      "ERRO: não foi possível sincronizar photos."
-    );
+        "ERRO: não foi possível sincronizar photos.");
 
     return false;
   }
 
   Serial.println(
-    "PHOTOS: dados mantidos em RAM."
-  );
-
+      "PHOTOS: dados mantidos em RAM.");
 
   // ============================================================
   // PRIORIDADE
@@ -3542,19 +3289,16 @@ bool syncDevice()
   bool hasPriority = false;
 
   if (!firebase.readDevicePriority(
-        deviceId.c_str(),
-        priorityCollectionId,
-        priorityImageId,
-        hasPriority
-      ))
+          deviceId.c_str(),
+          priorityCollectionId,
+          priorityImageId,
+          hasPriority))
   {
     Serial.println(
-      "ERRO: nao foi possivel ler prioridade."
-    );
+        "ERRO: nao foi possivel ler prioridade.");
 
     return false;
   }
-
 
   // ============================================================
   // FIRESTORE - TEMP PHOTOS
@@ -3563,27 +3307,22 @@ bool syncDevice()
   Serial.println();
 
   Serial.println(
-    "=== SINCRONIZANDO TEMP PHOTOS ==="
-  );
+      "=== SINCRONIZANDO TEMP PHOTOS ===");
 
   String temporaryPhotosJson;
 
   if (!firebase.syncTemporaryPhotos(
-        deviceId.c_str(),
-        temporaryPhotosJson
-      ))
+          deviceId.c_str(),
+          temporaryPhotosJson))
   {
     Serial.println(
-      "ERRO: não foi possível sincronizar temp photos."
-    );
+        "ERRO: não foi possível sincronizar temp photos.");
 
     return false;
   }
 
   Serial.println(
-    "TEMP PHOTOS: dados mantidos em RAM."
-  );
-
+      "TEMP PHOTOS: dados mantidos em RAM.");
 
   // ============================================================
   // REMOVER CACHES ANTIGOS
@@ -3594,8 +3333,7 @@ bool syncDevice()
     if (sd.remove("/photos.json"))
     {
       Serial.println(
-        "Removido /photos.json antigo."
-      );
+          "Removido /photos.json antigo.");
     }
   }
 
@@ -3604,11 +3342,9 @@ bool syncDevice()
     if (sd.remove("/temporaryPhotos.json"))
     {
       Serial.println(
-        "Removido /temporaryPhotos.json antigo."
-      );
+          "Removido /temporaryPhotos.json antigo.");
     }
   }
-
 
   // ============================================================
   // ESCOLHER FOTO
@@ -3619,40 +3355,34 @@ bool syncDevice()
   bool isTemporary = false;
 
   if (!chooseDisplayPhoto(
-        imageId,
-        epaperFilePath,
-        priorityCollectionId,
-        priorityImageId,
-        hasPriority,
-        isTemporary,
-        photosJson,
-        temporaryPhotosJson
-      ))
+          imageId,
+          epaperFilePath,
+          priorityCollectionId,
+          priorityImageId,
+          hasPriority,
+          isTemporary,
+          photosJson,
+          temporaryPhotosJson))
   {
     Serial.println(
-      "SYNC: nenhuma foto disponivel."
-    );
+        "SYNC: nenhuma foto disponivel.");
 
     return true;
   }
-
 
   // ============================================================
   // MOSTRAR FOTO
   // ============================================================
 
   if (!showPhoto(
-        imageId,
-        epaperFilePath
-      ))
+          imageId,
+          epaperFilePath))
   {
     Serial.println(
-      "ERRO: nao foi possivel mostrar a foto."
-    );
+        "ERRO: nao foi possivel mostrar a foto.");
 
     return false;
   }
-
 
   // ============================================================
   // CONSUMIR FOTO TEMPORARIA
@@ -3661,80 +3391,65 @@ bool syncDevice()
   if (isTemporary)
   {
     Serial.println(
-      "TEMPORARY: foto temporaria exibida."
-    );
+        "TEMPORARY: foto temporaria exibida.");
 
     Serial.println(
-      "TEMPORARY: marcando como consumida."
-    );
+        "TEMPORARY: marcando como consumida.");
 
     String consumedAt = getCurrentTimestamp();
 
     if (!firebase.markTemporaryPhotoConsumed(
-          deviceId.c_str(),
-          imageId.c_str(),
-          consumedAt.c_str()
-        ))
+            deviceId.c_str(),
+            imageId.c_str(),
+            consumedAt.c_str()))
     {
       Serial.println("SYNC: erro ao marcar temporary como consumida.");
       return false;
     }
 
     Serial.println(
-      "TEMPORARY: foto marcada como consumida."
-    );
+        "TEMPORARY: foto marcada como consumida.");
   }
-
 
   // ============================================================
   // CONSUMIR PRIORIDADE
   // ============================================================
 
   if (
-    hasPriority &&
-    imageId == priorityImageId
-  )
+      hasPriority &&
+      imageId == priorityImageId)
   {
     Serial.println(
-      "PRIORITY: foto prioritaria exibida."
-    );
+        "PRIORITY: foto prioritaria exibida.");
 
     Serial.println(
-      "PRIORITY: removendo prioridade."
-    );
+        "PRIORITY: removendo prioridade.");
 
     if (!firebase.clearDevicePriority(
-          deviceId.c_str()
-        ))
+            deviceId.c_str()))
     {
       Serial.println(
-        "ERRO: nao foi possivel remover prioridade."
-      );
+          "ERRO: nao foi possivel remover prioridade.");
 
       return false;
     }
 
     Serial.println(
-      "PRIORITY: prioridade removida."
-    );
+        "PRIORITY: prioridade removida.");
   }
-
 
   // ============================================================
   // REGISTRAR FOTO EXIBIDA
   // ============================================================
 
   if (!recordDisplayedPhoto(
-        imageId
-      ))
+          imageId))
   {
     Serial.println(
-      "ERRO: nao foi possivel registrar historico."
-    );
+        "ERRO: nao foi possivel registrar historico.");
 
     return false;
   }
-
 
   // ============================================================
   // REGISTRAR STATE FIREBASE
@@ -3743,8 +3458,7 @@ bool syncDevice()
   if (!writeStateFirebase())
   {
     Serial.println(
-      "ERRO: nao foi possivel registrar state Firebase."
-    );
+        "ERRO: nao foi possivel registrar state Firebase.");
 
     return false;
   }
@@ -3754,59 +3468,47 @@ bool syncDevice()
   // ============================================================
 
   if (!setProcessingStatus(
-      deviceId,
-      "idle"
-    ))
+          deviceId,
+          "idle"))
   {
     Serial.println(
-      "PROCESSING: nao foi possivel registrar idle."
-    );
+        "PROCESSING: nao foi possivel registrar idle.");
   }
 
   Serial.println(
-    "END Sync"
-  );
+      "END Sync");
 
   return true;
 }
 
-
-void next()
+void button_3()
 {
   Serial.println(
-    "=== NEXT ==="
-  );
+      "=== Button 3 ===");
 }
-
 
 void info()
 {
   Serial.println(
-    "=== INFO ==="
-  );
-
+      "=== INFO ===");
 
   // ============================================================
   // WI-FI
   // ============================================================
 
   Serial.println(
-    "INFO: conectando ao Wi-Fi salvo..."
-  );
+      "INFO: conectando ao Wi-Fi salvo...");
 
   if (!wifiManager.connectToSavedWiFi())
   {
     Serial.println(
-      "INFO: nao foi possivel conectar ao Wi-Fi."
-    );
+        "INFO: nao foi possivel conectar ao Wi-Fi.");
 
     return;
   }
 
   Serial.println(
-    "INFO: Wi-Fi conectado."
-  );
-
+      "INFO: Wi-Fi conectado.");
 
   // ============================================================
   // HORARIO
@@ -3817,7 +3519,6 @@ void info()
     return;
   }
 
-
   // ============================================================
   // INICIALIZAR SD
   // ============================================================
@@ -3825,12 +3526,10 @@ void info()
   if (!sd.begin(Serial))
   {
     Serial.println(
-      "INFO: nao foi possivel inicializar o SD."
-    );
+        "INFO: nao foi possivel inicializar o SD.");
 
     return;
   }
-
 
   // ============================================================
   // CARREGAR STATE
@@ -3839,42 +3538,36 @@ void info()
   if (!loadState())
   {
     Serial.println(
-      "INFO: nao foi possivel carregar state."
-    );
+        "INFO: nao foi possivel carregar state.");
 
     return;
   }
-
 
   // ============================================================
   // FIREBASE
   // ============================================================
 
   firebase.begin(
-    API_KEY,
-    STORAGE_BUCKET_ID,
-    Serial
-  );
+      API_KEY,
+      STORAGE_BUCKET_ID,
+      Serial);
 
   if (!firebase.authenticate())
   {
     Serial.println(
-      "Autenticacao Firebase falhou."
-    );
+        "Autenticacao Firebase falhou.");
 
     return;
   }
-  
+
   deviceId = WiFi.macAddress();
 
   if (!setProcessingStatus(
-        deviceId,
-        "thinking"
-      ))
+          deviceId,
+          "thinking"))
   {
     Serial.println(
-      "PROCESSING: nao foi possivel registrar thinking."
-    );
+        "PROCESSING: nao foi possivel registrar thinking.");
   }
 
   // ============================================================
@@ -3884,25 +3577,20 @@ void info()
   String photosJson;
 
   Serial.println(
-    "INFO: sincronizando photos..."
-  );
+      "INFO: sincronizando photos...");
 
   if (!firebase.syncPhotos(
-        deviceId.c_str(),
-        photosJson
-      ))
+          deviceId.c_str(),
+          photosJson))
   {
     Serial.println(
-      "INFO: nao foi possivel sincronizar photos."
-    );
+        "INFO: nao foi possivel sincronizar photos.");
 
     return;
   }
 
   Serial.println(
-    "INFO: photos sincronizadas em RAM."
-  );
-
+      "INFO: photos sincronizadas em RAM.");
 
   // ============================================================
   // OBTER DESCRICAO
@@ -3911,45 +3599,53 @@ void info()
   String description;
 
   if (!getCurrentImageDescription(
-        description,
-        photosJson
-      ))
+          description,
+          photosJson))
   {
     description =
-      "Esta imagem nao tem descricao.";
+        "Esta imagem nao tem descricao.";
   }
-
 
   // ============================================================
   // MOSTRAR DESCRICAO
   // ============================================================
 
   if (!displayTextScreen(
-        description
-      ))
+          description))
   {
     Serial.println(
-      "INFO: nao foi possivel mostrar descricao."
-    );
+        "INFO: nao foi possivel mostrar descricao.");
 
     return;
   }
-
 
   // ============================================================
   // AGUARDAR 2 MINUTOS
   // ============================================================
 
   Serial.println(
-    "INFO: descricao exibida."
-  );
+      "INFO: descricao exibida.");
 
   Serial.println(
-    "INFO: aguardando 2 minutos antes de restaurar a imagem."
-  );
+      "INFO: aguardando 2 minutos antes de restaurar a imagem.");
+
+  if (!setProcessingStatus(
+          deviceId,
+          "idle"))
+  {
+    Serial.println(
+        "PROCESSING: nao foi possivel registrar idle.");
+  }
 
   delay(displayRatePeriod * 1000);
 
+  if (!setProcessingStatus(
+          deviceId,
+          "thinking"))
+  {
+    Serial.println(
+        "PROCESSING: nao foi possivel registrar thinking.");
+  }
 
   // ============================================================
   // OBTER NOVAMENTE A IMAGEM ATUAL
@@ -3958,79 +3654,66 @@ void info()
   FirebaseJsonData currentImageData;
 
   if (!stateJson.get(
-        currentImageData,
-        "currentImageId"
-      ))
+          currentImageData,
+          "currentImageId"))
   {
     Serial.println(
-      "INFO: currentImageId nao encontrado."
-    );
+        "INFO: currentImageId nao encontrado.");
 
     return;
   }
 
   String currentImageId =
-    currentImageData.to<String>();
+      currentImageData.to<String>();
 
   if (currentImageId.length() == 0)
   {
     Serial.println(
-      "INFO: nenhuma imagem atual."
-    );
+        "INFO: nenhuma imagem atual.");
 
     return;
   }
-
 
   // ============================================================
   // RESTAURAR IMAGEM
   // ============================================================
 
   String imagePath =
-    "/" + currentImageId + ".bin";
+      "/" + currentImageId + ".bin";
 
   Serial.println(
-    "INFO: restaurando imagem original."
-  );
+      "INFO: restaurando imagem original.");
 
   if (!displayImageFromSD(
-        imagePath.c_str()
-      ))
+          imagePath.c_str()))
   {
     Serial.println(
-      "INFO: nao foi possivel restaurar a imagem."
-    );
+        "INFO: nao foi possivel restaurar a imagem.");
 
     return;
   }
 
   if (!setProcessingStatus(
-      deviceId,
-      "idle"
-    ))
+          deviceId,
+          "idle"))
   {
     Serial.println(
-      "PROCESSING: nao foi possivel registrar idle."
-    );
+        "PROCESSING: nao foi possivel registrar idle.");
   }
 
   Serial.println(
-    "INFO: imagem original restaurada."
-  );
+      "INFO: imagem original restaurada.");
 }
-
 
 void wifi()
 {
   Serial.println(
-    "=== WIFI ==="
-  );
+      "=== WIFI ===");
 
   firebase.begin(
-    API_KEY,
-    STORAGE_BUCKET_ID,
-    Serial
-  );
+      API_KEY,
+      STORAGE_BUCKET_ID,
+      Serial);
 
   if (wifiManager.startConfiguration())
   {
@@ -4038,10 +3721,8 @@ void wifi()
   }
 
   Serial.println(
-    "END Info"
-  );
+      "END Info");
 }
-
 
 // ============================================================
 // SETUP
@@ -4056,59 +3737,48 @@ void setup()
   delay(1000);
 
   pinMode(
-    BUTTON_SYNC,
-    INPUT_PULLUP
-  );
+      BUTTON_SYNC,
+      INPUT_PULLUP);
 
   pinMode(
-    BUTTON_NEXT,
-    INPUT_PULLUP
-  );
+      BUTTON_3,
+      INPUT_PULLUP);
 
   pinMode(
-    BUTTON_INFO,
-    INPUT_PULLUP
-  );
+      BUTTON_INFO,
+      INPUT_PULLUP);
 
   pinMode(
-    BUTTON_WIFI,
-    INPUT_PULLUP
-  );
+      BUTTON_WIFI,
+      INPUT_PULLUP);
 
   pinMode(
-    EPD_BUSY,
-    INPUT
-  );
+      EPD_BUSY,
+      INPUT);
 
   pinMode(
-    EPD_RST,
-    OUTPUT
-  );
+      EPD_RST,
+      OUTPUT);
 
   pinMode(
-    EPD_DC,
-    OUTPUT
-  );
+      EPD_DC,
+      OUTPUT);
 
   pinMode(
-    EPD_CS,
-    OUTPUT
-  );
+      EPD_CS,
+      OUTPUT);
 
   digitalWrite(
-    EPD_CS,
-    HIGH
-  );
+      EPD_CS,
+      HIGH);
 
   Serial.println();
 
   Serial.println(
-    "=== QUADRO E-INK ==="
-  );
+      "=== QUADRO E-INK ===");
 
   esp_sleep_wakeup_cause_t reason =
-    esp_sleep_get_wakeup_cause();
-
+      esp_sleep_get_wakeup_cause();
 
   // ============================================================
   // MOTIVO DO WAKE
@@ -4116,51 +3786,43 @@ void setup()
 
   switch (reason)
   {
-    case ESP_SLEEP_WAKEUP_EXT1:
+  case ESP_SLEEP_WAKEUP_EXT1:
 
-      Serial.println(
-        "Acordou pelo botao 3 / GPIO9."
-      );
+    Serial.println(
+        "Acordou pelo botao 3 / GPIO9.");
 
-      break;
+    break;
 
+  case ESP_SLEEP_WAKEUP_TIMER:
 
-    case ESP_SLEEP_WAKEUP_TIMER:
+    Serial.println(
+        "Acordou pelo TIMER.");
 
-      Serial.println(
-        "Acordou pelo TIMER."
-      );
+    break;
 
-      break;
+  case ESP_SLEEP_WAKEUP_UNDEFINED:
 
+    Serial.println(
+        "Boot normal.");
 
-    case ESP_SLEEP_WAKEUP_UNDEFINED:
+    break;
 
-      Serial.println(
-        "Boot normal."
-      );
+  default:
 
-      break;
+    Serial.print(
+        "Outro motivo de wake: ");
 
+    Serial.println(
+        reason);
 
-    default:
-
-      Serial.print(
-        "Outro motivo de wake: "
-      );
-
-      Serial.println(
-        reason
-      );
-
-      break;
+    break;
   }
 
+  // ============================================================
+  // ACORDOU PELO TIMER
+  // ============================================================
 
-  // ============================================================
-  // BOOT NORMAL
-  // ============================================================
-  if (reason == ESP_SLEEP_WAKEUP_UNDEFINED)
+  if (reason == ESP_SLEEP_WAKEUP_TIMER)
   {
     for (int attempt = 1; attempt <= 3; attempt++)
     {
@@ -4170,75 +3832,53 @@ void setup()
       if (attempt < 3)
       {
         Serial.printf(
-          "SYNC falhou. Tentativa %d/3 concluida.\n",
-          attempt
-        );
+            "SYNC falhou. Tentativa %d/3 concluida.\n",
+            attempt);
 
         delay(1000);
       }
       else
       {
         Serial.println(
-          "SYNC falhou apos 3 tentativas."
-        );
+            "SYNC falhou apos 3 tentativas.");
       }
     }
   }
 
-
   // ============================================================
-  // ACORDOU PELO TIMER
-  // ============================================================
-
-  else if (
-    reason == ESP_SLEEP_WAKEUP_TIMER
-  )
-  {
-    syncDevice();
-  }
-
-
-  // ============================================================
-  // ACORDOU PELO BOTAO 3 / NEXT
+  // ACORDOU PELO BOTAO 3 OU BOOT NORMAL
   // ============================================================
 
   else if (
-    reason == ESP_SLEEP_WAKEUP_EXT1
-  )
+      reason == ESP_SLEEP_WAKEUP_EXT1 || reason == ESP_SLEEP_WAKEUP_UNDEFINED)
   {
     Serial.println();
 
     Serial.println(
-      "Solte o botao 3..."
-    );
+        "Solte o botao 3...");
 
     waitButtonRelease(
-      BUTTON_NEXT
-    );
+        BUTTON_3);
 
     Serial.println(
-      "Botao 3 solto."
-    );
+        "Botao 3 solto.");
 
     Serial.println(
-      "Agora aperte o segundo botao:"
-    );
+        "Agora aperte o segundo botao:");
 
     bool actionDetected = false;
 
     unsigned long startTime =
-      millis();
+        millis();
 
     while (!actionDetected)
     {
       if (
-        digitalRead(BUTTON_SYNC) ==
-        LOW
-      )
+          digitalRead(BUTTON_SYNC) ==
+          LOW)
       {
         Serial.println(
-          "SYNC"
-        );
+            "SYNC");
 
         actionDetected = true;
 
@@ -4246,27 +3886,23 @@ void setup()
       }
 
       else if (
-        digitalRead(BUTTON_NEXT) ==
-        LOW
-      )
+          digitalRead(BUTTON_3) ==
+          LOW)
       {
         Serial.println(
-          "NEXT"
-        );
+            "BUTTON_3");
 
         actionDetected = true;
 
-        next();
+        button_3();
       }
 
       else if (
-        digitalRead(BUTTON_INFO) ==
-        LOW
-      )
+          digitalRead(BUTTON_INFO) ==
+          LOW)
       {
         Serial.println(
-          "INFO"
-        );
+            "INFO");
 
         actionDetected = true;
 
@@ -4274,13 +3910,11 @@ void setup()
       }
 
       else if (
-        digitalRead(BUTTON_WIFI) ==
-        LOW
-      )
+          digitalRead(BUTTON_WIFI) ==
+          LOW)
       {
         Serial.println(
-          "WIFI"
-        );
+            "WIFI");
 
         actionDetected = true;
 
@@ -4288,13 +3922,11 @@ void setup()
       }
 
       if (
-        !actionDetected &&
-        millis() - startTime >= 10000
-      )
+          !actionDetected &&
+          millis() - startTime >= 10000)
       {
         Serial.println(
-          "Timeout aguardando segundo botao."
-        );
+            "Timeout aguardando segundo botao.");
 
         break;
       }
@@ -4304,54 +3936,54 @@ void setup()
   }
 
   Serial.println(
-    "END Setup"
-  );
+      "END Setup");
 
   // ============================================================
   // DEEP SLEEP
   // ============================================================
 
   esp_sleep_enable_ext1_wakeup_io(
-    (1ULL << BUTTON_NEXT),
-    ESP_EXT1_WAKEUP_ANY_LOW
-  );
+      (1ULL << BUTTON_3),
+      ESP_EXT1_WAKEUP_ANY_LOW);
 
   delay(2000); // IMPORTANTE!!! NÃO RETIRAR
 
   Serial.flush();
 
-  uint32_t updateIntervalMinutes;
+  uint64_t sleepSeconds = 0;
 
-  if (!sd.getUpdateIntervalMinutes(updateIntervalMinutes))
-  {
-    updateIntervalMinutes = 120;
-  }
-
-  uint32_t sleepMinutes =
-    updateIntervalMinutes;
-
+  // Fotos temporarias podem definir uma duracao propria.
   if (nextSleepMinutes > 0)
   {
-    sleepMinutes =
-      nextSleepMinutes;
+    sleepSeconds = (uint64_t)nextSleepMinutes * 60ULL;
+
+    Serial.println("SLEEP: usando duracao da foto temporaria.");
+  }
+  else
+  {
+    // Comportamento normal: dormir ate o proximo horario.
+    if (!secondsUntilNextScheduledUpdate(sleepSeconds))
+    {
+      // Fallback para configuracao ausente ou horario invalido.
+      sleepSeconds = 120ULL * 60ULL;
+
+      Serial.println(
+          "SCHEDULE: usando fallback de 120 minutos.");
+    }
   }
 
   Serial.println();
-  Serial.println(
-    "Entrando em deep sleep por " +
-    String(sleepMinutes) +
-    " minutos..."
-  );
+  Serial.print("Entrando em deep sleep por ");
+  Serial.print(sleepSeconds / 60ULL);
+  Serial.println(" minutos...");
 
   esp_sleep_enable_timer_wakeup(
-    (uint64_t)sleepMinutes * 60ULL * 1000000ULL
-  );
+      sleepSeconds * 1000000ULL);
 
   delay(500);
 
   esp_deep_sleep_start();
 }
-
 
 void loop()
 {

@@ -38,6 +38,22 @@ export type DevicePriority = {
 	imageId: string;
 };
 
+function getUpdateTimes(value: unknown): string[] {
+	if (
+		Array.isArray(value) &&
+		value.length > 0 &&
+		value.every(
+			(time): time is string =>
+				typeof time === "string" &&
+				/^([01]\d|2[0-3]):[0-5]\d$/.test(time),
+		)
+	) {
+		return [...new Set(value)].sort();
+	}
+
+	return [];
+}
+
 export async function getDevicePriority(
 	deviceId: string,
 ): Promise<DevicePriority | null> {
@@ -161,21 +177,16 @@ export async function getDevices(): Promise<Device[]> {
 	return Promise.all(
 		snapshot.docs.map(async (document) => {
 			const data = document.data();
-
 			const displayConfig = await getDeviceDisplayConfig(document.id);
 
 			return {
 				id: document.id,
-
 				name: data.name,
-
 				displayType: displayConfig.displayType,
-
 				orientation: displayConfig.orientation,
-
-				updateIntervalMinutes: data.updateIntervalMinutes,
-
+				updateTimes: getUpdateTimes(data.updateTimes),
 				ownerUid: data.ownerUid,
+				deviceAuthUid: data.deviceAuthUid,
 			} as Device;
 		}),
 	);
@@ -204,16 +215,12 @@ export async function getDevice(deviceId: string): Promise<Device | null> {
 
 	return {
 		id: snapshot.id,
-
 		name: data.name,
-
 		displayType: displayConfig.displayType,
-
 		orientation: displayConfig.orientation,
-
-		updateIntervalMinutes: data.updateIntervalMinutes,
-
+		updateTimes: getUpdateTimes(data.updateTimes),
 		ownerUid: data.ownerUid,
+		deviceAuthUid: data.deviceAuthUid,
 	} as Device;
 }
 
@@ -228,24 +235,13 @@ export async function createDevice(
 
 	const deviceRef = doc(db, "devices", device.id);
 
-	/*
-	 * Primeiro criamos o Device.
-	 *
-	 * displayType e orientation NÃO ficam mais
-	 * neste documento.
-	 */
 	await setDoc(deviceRef, {
 		name: device.name,
-		updateIntervalMinutes: device.updateIntervalMinutes,
-
+		updateTimes: getUpdateTimes(device.updateTimes),
 		ownerUid: user.uid,
 		deviceAuthUid: device.deviceAuthUid,
 	});
 
-	/*
-	 * Esta passa a ser a fonte oficial
-	 * da configuração física do display.
-	 */
 	await setDoc(doc(db, "devices", device.id, "config", "display"), {
 		displayType: device.displayType,
 		orientation: device.orientation,
@@ -268,15 +264,19 @@ export async function updateDevice(
 	data: {
 		name: string;
 		orientation: DisplayOrientation;
-		updateIntervalMinutes: number;
-
+		updateTimes: string[];
 		displayType?: DisplayType;
 	},
 ): Promise<void> {
+	const updateTimes = getUpdateTimes(data.updateTimes);
+
+	if (updateTimes.length !== data.updateTimes.length) {
+		throw new Error("A lista de horários de atualização é inválida.");
+	}
+
 	await updateDoc(doc(db, "devices", deviceId), {
 		name: data.name,
-
-		updateIntervalMinutes: data.updateIntervalMinutes,
+		updateTimes,
 	});
 
 	const displayData: {
@@ -297,13 +297,6 @@ export async function updateDevice(
 }
 
 export async function deleteDevice(deviceId: string): Promise<void> {
-	/*
-	 * Firestore não apaga subcollections
-	 * automaticamente quando o documento pai
-	 * é removido.
-	 *
-	 * Então removemos config/display primeiro.
-	 */
 	await deleteDoc(doc(db, "devices", deviceId, "config", "display"));
 
 	await deleteDoc(doc(db, "devices", deviceId));
@@ -313,28 +306,57 @@ export function subscribeToDeviceProcessingStatus(
 	deviceId: string,
 	callback: (processing: boolean) => void,
 ): () => void {
-	return onSnapshot(
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+
+	const unsubscribe = onSnapshot(
 		doc(db, "devices", deviceId, "state", "current"),
 		(snapshot) => {
+			if (timeout) {
+				clearTimeout(timeout);
+				timeout = undefined;
+			}
+
 			if (!snapshot.exists()) {
 				console.log("[DeviceProcessing] Documento não existe.");
-
 				callback(false);
 				return;
 			}
 
 			const data = snapshot.data();
-
 			const status = data.processing?.status;
+			const updatedAt = data.processing?.updatedAt;
 
-			const processing = status === "thinking";
+			if (status !== "thinking" || !updatedAt) {
+				callback(false);
+				return;
+			}
 
-			callback(processing);
+			const elapsed = Date.now() - updatedAt.toMillis();
+			const remaining = 2 * 60 * 1000 - elapsed;
+
+			if (remaining <= 0) {
+				callback(false);
+				return;
+			}
+
+			callback(true);
+
+			timeout = setTimeout(() => {
+				callback(false);
+				timeout = undefined;
+			}, remaining);
 		},
 		(error) => {
 			console.error("[DeviceProcessing] Erro no listener:", error);
-
 			callback(false);
 		},
 	);
+
+	return () => {
+		unsubscribe();
+
+		if (timeout) {
+			clearTimeout(timeout);
+		}
+	};
 }

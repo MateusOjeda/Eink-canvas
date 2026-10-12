@@ -1,10 +1,9 @@
 #include "FirebaseManager.h"
 
 void FirebaseManager::begin(
-  const char* apiKey,
-  const char* bucket,
-  Stream& serial
-)
+    const char *apiKey,
+    const char *bucket,
+    Stream &serial)
 {
   _bucket = bucket;
   _serial = &serial;
@@ -19,7 +18,7 @@ bool FirebaseManager::authenticate()
   _preferences.begin("firebase", false);
 
   String refreshToken =
-    _preferences.getString("refreshToken", "");
+      _preferences.getString("refreshToken", "");
 
   _preferences.end();
 
@@ -32,8 +31,7 @@ bool FirebaseManager::authenticate()
   if (refreshToken.length() == 0)
   {
     _serial->println(
-      "ERRO: nenhum refresh token encontrado."
-    );
+        "ERRO: nenhum refresh token encontrado.");
 
     return false;
   }
@@ -44,20 +42,18 @@ bool FirebaseManager::authenticate()
   Firebase.reconnectNetwork(true);
 
   Firebase.setIdToken(
-    &_config,
-    "",
-    3600,
-    refreshToken.c_str()
-  );
+      &_config,
+      "",
+      3600,
+      refreshToken.c_str());
 
   _serial->println("setIdToken() retornou.");
 
   _serial->println("Chamando Firebase.begin()...");
 
   Firebase.begin(
-    &_config,
-    &_auth
-  );
+      &_config,
+      &_auth);
 
   _serial->println("Firebase.begin() retornou. - Chamando Firebase.ready()...");
 
@@ -78,70 +74,62 @@ bool FirebaseManager::authenticate()
 }
 
 bool FirebaseManager::markTemporaryPhotoConsumed(
-  const char* deviceId,
-  const char* photoId,
-  const char* consumedAt
-)
+    const char *deviceId,
+    const char *photoId,
+    const char *consumedAt)
 {
   String path =
-    "devices/" + String(deviceId) +
-    "/temporaryPhotos/" + String(photoId);
+      "devices/" + String(deviceId) +
+      "/temporaryPhotos/" + String(photoId);
 
   FirebaseJson document;
 
   document.set(
-    "fields/consumedAt/timestampValue",
-    consumedAt
-  );
+      "fields/consumedAt/timestampValue",
+      consumedAt);
 
   if (Firebase.Firestore.patchDocument(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        path.c_str(),
-        document.raw(),
-        "consumedAt"
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          path.c_str(),
+          document.raw(),
+          "consumedAt"))
   {
     _serial->println(
-      "TEMPORARY: foto marcada como consumida."
-    );
+        "TEMPORARY: foto marcada como consumida.");
 
     return true;
   }
 
   _serial->println(
-    "TEMPORARY: erro ao marcar como consumida:"
-  );
+      "TEMPORARY: erro ao marcar como consumida:");
 
   _serial->println(
-    _fbdo.errorReason()
-  );
+      _fbdo.errorReason());
 
   return false;
 }
 
 bool FirebaseManager::listCollections(
-  const char* deviceId
-)
+    const char *deviceId)
 {
   String path =
-    "devices/" + String(deviceId) +
-    "/collections";
+      "devices/" + String(deviceId) +
+      "/collections";
 
   Serial.println("LIST COLLECTIONS: ANTES DO FIREBASE");
 
   if (Firebase.Firestore.listDocuments(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        path.c_str(),
-        100,
-        "",
-        "",
-        "",
-        false
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          path.c_str(),
+          100,
+          "",
+          "",
+          "",
+          false))
   {
     Serial.println("LIST COLLECTIONS: FIREBASE RETORNOU");
 
@@ -165,25 +153,23 @@ bool FirebaseManager::listCollections(
 }
 
 bool FirebaseManager::syncPhotos(
-  const char* deviceId,
-  String& output
-)
+    const char *deviceId,
+    String &output)
 {
   String collectionsPath =
-    "devices/" + String(deviceId) +
-    "/collections";
+      "devices/" + String(deviceId) +
+      "/collections";
 
   if (!Firebase.Firestore.listDocuments(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        collectionsPath.c_str(),
-        100,
-        "",
-        "",
-        "",
-        false
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          collectionsPath.c_str(),
+          100,
+          "",
+          "",
+          "",
+          false))
   {
     _serial->println("PHOTOS: ERRO AO LER COLLECTIONS:");
     _serial->println(_fbdo.errorReason());
@@ -197,9 +183,8 @@ bool FirebaseManager::syncPhotos(
   FirebaseJsonData data;
 
   if (!collectionsJson.get(
-        data,
-        "documents"
-      ))
+          data,
+          "documents"))
   {
     _serial->println("PHOTOS: COLLECTIONS SEM DOCUMENTOS.");
 
@@ -211,8 +196,7 @@ bool FirebaseManager::syncPhotos(
   if (!data.getArray(collectionsArray))
   {
     _serial->println(
-      "PHOTOS: ERRO AO CONVERTER COLLECTIONS."
-    );
+        "PHOTOS: ERRO AO CONVERTER COLLECTIONS.");
 
     return false;
   }
@@ -221,17 +205,15 @@ bool FirebaseManager::syncPhotos(
   FirebaseJsonArray photosCollections;
 
   for (
-    size_t i = 0;
-    i < collectionsArray.size();
-    i++
-  )
+      size_t i = 0;
+      i < collectionsArray.size();
+      i++)
   {
     FirebaseJsonData collectionData;
 
     if (!collectionsArray.get(
-          collectionData,
-          i
-        ))
+            collectionData,
+            i))
     {
       continue;
     }
@@ -239,8 +221,7 @@ bool FirebaseManager::syncPhotos(
     FirebaseJson collectionDocument;
 
     if (!collectionData.getJSON(
-          collectionDocument
-        ))
+            collectionDocument))
     {
       continue;
     }
@@ -249,34 +230,30 @@ bool FirebaseManager::syncPhotos(
     FirebaseJsonData fieldsData;
 
     collectionDocument.get(
-      nameData,
-      "name"
-    );
+        nameData,
+        "name");
 
     collectionDocument.get(
-      fieldsData,
-      "fields"
-    );
+        fieldsData,
+        "fields");
 
     String documentName =
-      nameData.to<String>();
+        nameData.to<String>();
 
     int slash =
-      documentName.lastIndexOf('/');
+        documentName.lastIndexOf('/');
 
     if (slash < 0)
       continue;
 
     String collectionId =
-      documentName.substring(
-        slash + 1
-      );
+        documentName.substring(
+            slash + 1);
 
     FirebaseJson fieldsJson;
 
     if (!fieldsData.getJSON(
-          fieldsJson
-        ))
+            fieldsJson))
     {
       continue;
     }
@@ -286,66 +263,56 @@ bool FirebaseManager::syncPhotos(
     FirebaseJsonData collectionCreatedAt;
 
     fieldsJson.get(
-      collectionName,
-      "name/stringValue"
-    );
+        collectionName,
+        "name/stringValue");
 
     fieldsJson.get(
-      collectionActive,
-      "active/booleanValue"
-    );
+        collectionActive,
+        "active/booleanValue");
 
     fieldsJson.get(
-      collectionCreatedAt,
-      "createdAt/timestampValue"
-    );
+        collectionCreatedAt,
+        "createdAt/timestampValue");
 
     FirebaseJson collectionJson;
 
     collectionJson.set(
-      "id",
-      collectionId
-    );
+        "id",
+        collectionId);
 
     collectionJson.set(
-      "active",
-      collectionActive.to<bool>()
-    );
+        "active",
+        collectionActive.to<bool>());
 
     collectionJson.set(
-      "createdAt",
-      collectionCreatedAt.to<String>()
-    );
+        "createdAt",
+        collectionCreatedAt.to<String>());
 
     collectionJson.set(
-      "name",
-      collectionName.to<String>()
-    );
+        "name",
+        collectionName.to<String>());
 
     String imagesPath =
-      collectionsPath +
-      "/" + collectionId +
-      "/images";
+        collectionsPath +
+        "/" + collectionId +
+        "/images";
 
     if (!Firebase.Firestore.listDocuments(
-          &_fbdo,
-          "einkcanvas",
-          "",
-          imagesPath.c_str(),
-          100,
-          "",
-          "",
-          "",
-          false
-        ))
+            &_fbdo,
+            "einkcanvas",
+            "",
+            imagesPath.c_str(),
+            100,
+            "",
+            "",
+            "",
+            false))
     {
       _serial->println(
-        "PHOTOS: ERRO AO LER IMAGES:"
-      );
+          "PHOTOS: ERRO AO LER IMAGES:");
 
       _serial->println(
-        _fbdo.errorReason()
-      );
+          _fbdo.errorReason());
 
       return false;
     }
@@ -353,39 +320,33 @@ bool FirebaseManager::syncPhotos(
     FirebaseJson imagesResponse;
 
     imagesResponse.setJsonData(
-      _fbdo.payload()
-    );
+        _fbdo.payload());
 
     FirebaseJsonArray imagesArray;
 
     FirebaseJsonData documentsData;
 
     if (
-      imagesResponse.get(
-        documentsData,
-        "documents"
-      )
-    )
+        imagesResponse.get(
+            documentsData,
+            "documents"))
     {
       documentsData.getArray(
-        imagesArray
-      );
+          imagesArray);
     }
 
     FirebaseJsonArray outputImages;
 
     for (
-      size_t j = 0;
-      j < imagesArray.size();
-      j++
-    )
+        size_t j = 0;
+        j < imagesArray.size();
+        j++)
     {
       FirebaseJsonData imageData;
 
       if (!imagesArray.get(
-            imageData,
-            j
-          ))
+              imageData,
+              j))
       {
         continue;
       }
@@ -393,8 +354,7 @@ bool FirebaseManager::syncPhotos(
       FirebaseJson imageDocument;
 
       if (!imageData.getJSON(
-            imageDocument
-          ))
+              imageDocument))
       {
         continue;
       }
@@ -403,34 +363,30 @@ bool FirebaseManager::syncPhotos(
       FirebaseJsonData imageFieldsData;
 
       imageDocument.get(
-        imageNameData,
-        "name"
-      );
+          imageNameData,
+          "name");
 
       imageDocument.get(
-        imageFieldsData,
-        "fields"
-      );
+          imageFieldsData,
+          "fields");
 
       String imageDocumentName =
-        imageNameData.to<String>();
+          imageNameData.to<String>();
 
       int imageSlash =
-        imageDocumentName.lastIndexOf('/');
+          imageDocumentName.lastIndexOf('/');
 
       if (imageSlash < 0)
         continue;
 
       String imageId =
-        imageDocumentName.substring(
-          imageSlash + 1
-        );
+          imageDocumentName.substring(
+              imageSlash + 1);
 
       FirebaseJson imageFields;
 
       if (!imageFieldsData.getJSON(
-            imageFields
-          ))
+              imageFields))
       {
         continue;
       }
@@ -445,114 +401,92 @@ bool FirebaseManager::syncPhotos(
       FirebaseJsonData description;
 
       imageFields.get(
-        active,
-        "active/booleanValue"
-      );
+          active,
+          "active/booleanValue");
 
       imageFields.get(
-        previewPath,
-        "previewPath/stringValue"
-      );
+          previewPath,
+          "previewPath/stringValue");
 
       imageFields.get(
-        thumbnailPath,
-        "thumbnailPath/stringValue"
-      );
+          thumbnailPath,
+          "thumbnailPath/stringValue");
 
       imageFields.get(
-        epaperFilePath,
-        "epaperFilePath/stringValue"
-      );
+          epaperFilePath,
+          "epaperFilePath/stringValue");
 
       imageFields.get(
-        width,
-        "width/integerValue"
-      );
+          width,
+          "width/integerValue");
 
       imageFields.get(
-        height,
-        "height/integerValue"
-      );
+          height,
+          "height/integerValue");
 
       imageFields.get(
-        createdAt,
-        "createdAt/timestampValue"
-      );
+          createdAt,
+          "createdAt/timestampValue");
 
       FirebaseJson imageJson;
 
       imageJson.set(
-        "id",
-        imageId
-      );
+          "id",
+          imageId);
 
       imageJson.set(
-        "active",
-        active.to<bool>()
-      );
+          "active",
+          active.to<bool>());
 
       imageJson.set(
-        "previewPath",
-        previewPath.to<String>()
-      );
+          "previewPath",
+          previewPath.to<String>());
 
       imageJson.set(
-        "thumbnailPath",
-        thumbnailPath.to<String>()
-      );
+          "thumbnailPath",
+          thumbnailPath.to<String>());
 
       imageJson.set(
-        "epaperFilePath",
-        epaperFilePath.to<String>()
-      );
+          "epaperFilePath",
+          epaperFilePath.to<String>());
 
       imageJson.set(
-        "width",
-        width.to<int>()
-      );
+          "width",
+          width.to<int>());
 
       imageJson.set(
-        "height",
-        height.to<int>()
-      );
+          "height",
+          height.to<int>());
 
       imageJson.set(
-        "createdAt",
-        createdAt.to<String>()
-      );
+          "createdAt",
+          createdAt.to<String>());
 
       if (
-        imageFields.get(
-          description,
-          "description/stringValue"
-        )
-      )
+          imageFields.get(
+              description,
+              "description/stringValue"))
       {
         imageJson.set(
-          "description",
-          description.to<String>()
-        );
+            "description",
+            description.to<String>());
       }
 
       outputImages.add(
-        imageJson
-      );
+          imageJson);
     }
 
     collectionJson.set(
-      "images",
-      outputImages
-    );
+        "images",
+        outputImages);
 
     photosCollections.add(
-      collectionJson
-    );
+        collectionJson);
   }
 
   photosJson.set(
-    "collections",
-    photosCollections
-  );
+      "collections",
+      photosCollections);
 
   photosJson.toString(output, false);
 
@@ -565,26 +499,24 @@ bool FirebaseManager::syncPhotos(
 }
 
 bool FirebaseManager::syncTemporaryPhotos(
-  const char* deviceId,
-  String& output
-)
+    const char *deviceId,
+    String &output)
 {
   String path =
-    "devices/" +
-    String(deviceId) +
-    "/temporaryPhotos";
+      "devices/" +
+      String(deviceId) +
+      "/temporaryPhotos";
 
   if (!Firebase.Firestore.listDocuments(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        path.c_str(),
-        100,
-        "",
-        "",
-        "",
-        false
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          path.c_str(),
+          100,
+          "",
+          "",
+          "",
+          false))
   {
     _serial->println("TEMPORARY PHOTOS: ERRO AO LISTAR DOCUMENTOS:");
     _serial->println(_fbdo.errorReason());
@@ -600,9 +532,8 @@ bool FirebaseManager::syncTemporaryPhotos(
   output = "{\"temporaryPhotos\":[";
 
   if (!response.get(
-        documentsData,
-        "documents"
-      ))
+          documentsData,
+          "documents"))
   {
     output += "]}";
 
@@ -624,9 +555,8 @@ bool FirebaseManager::syncTemporaryPhotos(
     FirebaseJsonData documentData;
 
     if (!documents.get(
-          documentData,
-          i
-        ))
+            documentData,
+            i))
     {
       continue;
     }
@@ -638,14 +568,12 @@ bool FirebaseManager::syncTemporaryPhotos(
     FirebaseJsonData fieldsData;
 
     document.get(
-      nameData,
-      "name"
-    );
+        nameData,
+        "name");
 
     document.get(
-      fieldsData,
-      "fields"
-    );
+        fieldsData,
+        "fields");
 
     String name = nameData.to<String>();
     String fieldsJson = fieldsData.to<String>();
@@ -680,73 +608,64 @@ bool FirebaseManager::syncTemporaryPhotos(
     int durationMinutes = 0;
 
     if (fields.get(
-          data,
-          "createdByUid/stringValue"
-        ))
+            data,
+            "createdByUid/stringValue"))
     {
       createdByUid = data.to<String>();
     }
 
     if (fields.get(
-          data,
-          "previewPath/stringValue"
-        ))
+            data,
+            "previewPath/stringValue"))
     {
       previewPath = data.to<String>();
     }
 
     if (fields.get(
-          data,
-          "epaperFilePath/stringValue"
-        ))
+            data,
+            "epaperFilePath/stringValue"))
     {
       epaperFilePath = data.to<String>();
     }
 
     if (fields.get(
-          data,
-          "width/integerValue"
-        ))
+            data,
+            "width/integerValue"))
     {
       width = data.to<int>();
     }
 
     if (fields.get(
-          data,
-          "height/integerValue"
-        ))
+            data,
+            "height/integerValue"))
     {
       height = data.to<int>();
     }
 
     if (fields.get(
-          data,
-          "recurrence/stringValue"
-        ))
+            data,
+            "recurrence/stringValue"))
     {
       recurrence = data.to<String>();
     }
 
     if (fields.get(
-          data,
-          "durationMinutes/integerValue"
-        ))
+            data,
+            "durationMinutes/integerValue"))
     {
       durationMinutes = data.to<int>();
     }
 
     if (fields.get(
-          data,
-          "createdAt/timestampValue"
-        ))
+            data,
+            "createdAt/timestampValue"))
     {
       createdAt = data.to<String>();
     }
 
     if (fields.get(
-          data,
-          "consumedAt/timestampValue"
-        ))
+            data,
+            "consumedAt/timestampValue"))
     {
       consumedAt = data.to<String>();
     }
@@ -797,30 +716,26 @@ bool FirebaseManager::syncTemporaryPhotos(
       FirebaseJsonData yearlyDateData;
 
       if (fields.get(
-            yearlyDateData,
-            "yearlyDate/mapValue/fields"
-          ))
+              yearlyDateData,
+              "yearlyDate/mapValue/fields"))
       {
         FirebaseJson yearlyFields;
         yearlyFields.setJsonData(
-          yearlyDateData.to<String>()
-        );
+            yearlyDateData.to<String>());
 
         int month = 0;
         int day = 0;
 
         if (yearlyFields.get(
-              data,
-              "month/integerValue"
-            ))
+                data,
+                "month/integerValue"))
         {
           month = data.to<int>();
         }
 
         if (yearlyFields.get(
-              data,
-              "day/integerValue"
-            ))
+                data,
+                "day/integerValue"))
         {
           day = data.to<int>();
         }
@@ -863,26 +778,24 @@ bool FirebaseManager::syncTemporaryPhotos(
 }
 
 bool FirebaseManager::listImages(
-  const char* deviceId,
-  const char* collectionId
-)
+    const char *deviceId,
+    const char *collectionId)
 {
   String path =
-    "devices/" + String(deviceId) +
-    "/collections/" + String(collectionId) +
-    "/images";
+      "devices/" + String(deviceId) +
+      "/collections/" + String(collectionId) +
+      "/images";
 
   if (Firebase.Firestore.listDocuments(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        path.c_str(),
-        100,
-        "",
-        "",
-        "",
-        false
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          path.c_str(),
+          100,
+          "",
+          "",
+          "",
+          false))
   {
     _serial->println("IMAGES: LEITURA OK!");
     _serial->println(_fbdo.payload());
@@ -897,20 +810,18 @@ bool FirebaseManager::listImages(
 }
 
 bool FirebaseManager::readDeviceConfig(
-  const char* deviceId,
-  String& output
-)
+    const char *deviceId,
+    String &output)
 {
   String devicePath =
-    "devices/" + String(deviceId);
+      "devices/" + String(deviceId);
 
   if (!Firebase.Firestore.getDocument(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        devicePath.c_str(),
-        ""
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          devicePath.c_str(),
+          ""))
   {
     _serial->println("DEVICE: ERRO NA LEITURA:");
     _serial->println(_fbdo.errorReason());
@@ -925,10 +836,7 @@ bool FirebaseManager::readDeviceConfig(
 
   FirebaseJsonData fieldsData;
 
-  if (!deviceJson.get(
-        fieldsData,
-        "fields"
-      ))
+  if (!deviceJson.get(fieldsData, "fields"))
   {
     _serial->println("DEVICE: fields nao encontrado.");
     return false;
@@ -945,38 +853,112 @@ bool FirebaseManager::readDeviceConfig(
   FirebaseJsonData deviceAuthUidData;
   FirebaseJsonData nameData;
   FirebaseJsonData ownerUidData;
-  FirebaseJsonData intervalData;
+  FirebaseJsonData updateTimesData;
 
   fields.get(
-    deviceAuthUidData,
-    "deviceAuthUid/stringValue"
-  );
+      deviceAuthUidData,
+      "deviceAuthUid/stringValue");
 
   fields.get(
-    nameData,
-    "name/stringValue"
-  );
+      nameData,
+      "name/stringValue");
 
   fields.get(
-    ownerUidData,
-    "ownerUid/stringValue"
-  );
+      ownerUidData,
+      "ownerUid/stringValue");
 
-  fields.get(
-    intervalData,
-    "updateIntervalMinutes/integerValue"
-  );
+  FirebaseJsonArray updateTimesArray;
+
+  if (!fields.get(
+          updateTimesData,
+          "updateTimes/arrayValue/values"))
+  {
+    _serial->println(
+        "DEVICE: updateTimes nao encontrado.");
+
+    return false;
+  }
+
+  if (!updateTimesData.getArray(updateTimesArray))
+  {
+    _serial->println(
+        "DEVICE: erro ao converter updateTimes.");
+
+    return false;
+  }
+
+  FirebaseJsonArray outputUpdateTimes;
+
+  for (
+      size_t i = 0;
+      i < updateTimesArray.size();
+      i++)
+  {
+    FirebaseJsonData timeData;
+
+    if (!updateTimesArray.get(timeData, i))
+    {
+      continue;
+    }
+
+    FirebaseJson timeJson;
+
+    if (!timeData.getJSON(timeJson))
+    {
+      _serial->println(
+          "DEVICE: erro ao ler horario em updateTimes.");
+
+      return false;
+    }
+
+    FirebaseJsonData timeValueData;
+
+    if (!timeJson.get(timeValueData, "stringValue"))
+    {
+      _serial->println(
+          "DEVICE: stringValue nao encontrado em updateTimes.");
+
+      return false;
+    }
+
+    String time = timeValueData.to<String>();
+
+    if (
+        time.length() != 5 ||
+        time.charAt(2) != ':' ||
+        !isDigit(time.charAt(0)) ||
+        !isDigit(time.charAt(1)) ||
+        !isDigit(time.charAt(3)) ||
+        !isDigit(time.charAt(4)) ||
+        time.substring(0, 2).toInt() > 23 ||
+        time.substring(3, 5).toInt() > 59)
+    {
+      _serial->println(
+          "DEVICE: horario invalido em updateTimes.");
+
+      return false;
+    }
+
+    outputUpdateTimes.add(time);
+  }
+
+  if (outputUpdateTimes.size() == 0)
+  {
+    _serial->println(
+        "DEVICE: nenhum horario configurado.");
+
+    return false;
+  }
 
   String displayPath =
-    devicePath + "/config/display";
+      devicePath + "/config/display";
 
   if (!Firebase.Firestore.getDocument(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        displayPath.c_str(),
-        ""
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          displayPath.c_str(),
+          ""))
   {
     _serial->println("DISPLAY: ERRO NA LEITURA:");
     _serial->println(_fbdo.errorReason());
@@ -992,9 +974,8 @@ bool FirebaseManager::readDeviceConfig(
   FirebaseJsonData displayFieldsData;
 
   if (!displayJson.get(
-        displayFieldsData,
-        "fields"
-      ))
+          displayFieldsData,
+          "fields"))
   {
     _serial->println("DISPLAY: fields nao encontrado.");
     return false;
@@ -1011,41 +992,34 @@ bool FirebaseManager::readDeviceConfig(
   FirebaseJsonData orientationData;
 
   displayFields.get(
-    orientationData,
-    "orientation/stringValue"
-  );
+      orientationData,
+      "orientation/stringValue");
 
   FirebaseJson configJson;
 
   configJson.set(
-    "deviceAuthUid",
-    deviceAuthUidData.to<String>()
-  );
+      "deviceAuthUid",
+      deviceAuthUidData.to<String>());
 
   configJson.set(
-    "name",
-    nameData.to<String>()
-  );
+      "name",
+      nameData.to<String>());
 
   configJson.set(
-    "ownerUid",
-    ownerUidData.to<String>()
-  );
+      "ownerUid",
+      ownerUidData.to<String>());
 
   configJson.set(
-    "updateIntervalMinutes",
-    intervalData.to<int>()
-  );
+      "updateTimes",
+      outputUpdateTimes);
 
   configJson.set(
-    "orientation",
-    orientationData.to<String>()
-  );
+      "orientation",
+      orientationData.to<String>());
 
   configJson.toString(
-    output,
-    false
-  );
+      output,
+      false);
 
   _serial->println();
   _serial->println("=== CONFIG JSON ===");
@@ -1056,31 +1030,26 @@ bool FirebaseManager::readDeviceConfig(
 }
 
 bool FirebaseManager::createAnonymousSession(
-  String& uid
-)
+    String &uid)
 {
   _serial->println();
   _serial->println(
-    "Criando nova sessao Anonymous..."
-  );
+      "Criando nova sessao Anonymous...");
 
   Firebase.reconnectNetwork(true);
 
   if (!Firebase.signUp(
-        &_config,
-        &_auth,
-        "",
-        ""
-      ))
+          &_config,
+          &_auth,
+          "",
+          ""))
   {
     _serial->println();
     _serial->println(
-      "ERRO AO CRIAR SESSAO:"
-    );
+        "ERRO AO CRIAR SESSAO:");
 
     _serial->println(
-      _config.signer.signupError.message.c_str()
-    );
+        _config.signer.signupError.message.c_str());
 
     return false;
   }
@@ -1089,28 +1058,23 @@ bool FirebaseManager::createAnonymousSession(
 
   _serial->println();
   _serial->println(
-    "=== SESSAO CRIADA ==="
-  );
+      "=== SESSAO CRIADA ===");
 
   _serial->print(
-    "UID: "
-  );
+      "UID: ");
 
   _serial->println(
-    uid
-  );
+      uid);
 
   Firebase.begin(
-    &_config,
-    &_auth
-  );
+      &_config,
+      &_auth);
 
   _serial->println(
-    "Firebase iniciado."
-  );
+      "Firebase iniciado.");
 
   unsigned long start =
-    millis();
+      millis();
 
   while (!Firebase.ready())
   {
@@ -1119,85 +1083,74 @@ bool FirebaseManager::createAnonymousSession(
     if (millis() - start > 15000)
     {
       _serial->println(
-        "Timeout aguardando Firebase."
-      );
+          "Timeout aguardando Firebase.");
 
       return false;
     }
   }
 
   _serial->println(
-    "Firebase autenticado."
-  );
+      "Firebase autenticado.");
 
-  const char* refreshToken =
-    Firebase.getRefreshToken();
+  const char *refreshToken =
+      Firebase.getRefreshToken();
 
   if (
-    refreshToken == nullptr ||
-    strlen(refreshToken) == 0
-  )
+      refreshToken == nullptr ||
+      strlen(refreshToken) == 0)
   {
     _serial->println(
-      "ERRO: refresh token vazio."
-    );
+        "ERRO: refresh token vazio.");
 
     return false;
   }
 
   _preferences.begin(
-    "firebase",
-    false
-  );
+      "firebase",
+      false);
 
   size_t saved =
-    _preferences.putString(
-      "refreshToken",
-      refreshToken
-    );
+      _preferences.putString(
+          "refreshToken",
+          refreshToken);
 
   _preferences.end();
 
   if (saved == 0)
   {
     _serial->println(
-      "ERRO: nao foi possivel salvar o refresh token."
-    );
+        "ERRO: nao foi possivel salvar o refresh token.");
 
     return false;
   }
 
   _serial->println(
-    "Refresh token salvo no NVS."
-  );
+      "Refresh token salvo no NVS.");
 
   return true;
 }
 
 bool FirebaseManager::writeState(
-  const char* deviceId,
-  const String& state
-)
+    const char *deviceId,
+    const String &state)
 {
   String path =
-    "devices/" + String(deviceId) +
-    "/state/current";
+      "devices/" + String(deviceId) +
+      "/state/current";
 
   FirebaseJson document;
 
   document.set(
-    "fields/state/stringValue",
-    state
-  );
+      "fields/state/stringValue",
+      state);
 
   if (Firebase.Firestore.patchDocument(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        path.c_str(),
-        document.raw(),
-        "state"
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          path.c_str(),
+          document.raw(),
+          "state"))
   {
     _serial->println("STATE: ATUALIZADO!");
     return true;
@@ -1210,72 +1163,62 @@ bool FirebaseManager::writeState(
 }
 
 bool FirebaseManager::writeProcessingStatus(
-  const char* deviceId,
-  const String& status,
-  const char* updatedAt
-)
+    const char *deviceId,
+    const String &status,
+    const char *updatedAt)
 {
   String path =
-    "devices/" + String(deviceId) +
-    "/state/current";
+      "devices/" + String(deviceId) +
+      "/state/current";
 
   FirebaseJson document;
 
   document.set(
-    "fields/processing/mapValue/fields/status/stringValue",
-    status
-  );
+      "fields/processing/mapValue/fields/status/stringValue",
+      status);
 
   document.set(
-    "fields/processing/mapValue/fields/updatedAt/timestampValue",
-    updatedAt
-  );
+      "fields/processing/mapValue/fields/updatedAt/timestampValue",
+      updatedAt);
 
   if (Firebase.Firestore.patchDocument(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        path.c_str(),
-        document.raw(),
-        "processing"
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          path.c_str(),
+          document.raw(),
+          "processing"))
   {
     _serial->println(
-      "PROCESSING: STATUS ATUALIZADO!"
-    );
+        "PROCESSING: STATUS ATUALIZADO!");
 
     return true;
   }
 
   _serial->println(
-    "PROCESSING: ERRO AO ATUALIZAR:"
-  );
+      "PROCESSING: ERRO AO ATUALIZAR:");
 
   _serial->println(
-    _fbdo.errorReason()
-  );
+      _fbdo.errorReason());
 
   return false;
 }
 
 static void firebaseDownloadCallback(
-  FCS_DownloadStatusInfo info
-)
+    FCS_DownloadStatusInfo info)
 {
   if (info.status == firebase_fcs_download_status_init)
   {
     Serial.printf(
-      "Baixando: %s (%d bytes)\n",
-      info.remoteFileName.c_str(),
-      info.fileSize
-    );
+        "Baixando: %s (%d bytes)\n",
+        info.remoteFileName.c_str(),
+        info.fileSize);
   }
   else if (info.status == firebase_fcs_download_status_download)
   {
     Serial.printf(
-      "Progresso: %d%%\n",
-      (int)info.progress
-    );
+        "Progresso: %d%%\n",
+        (int)info.progress);
   }
   else if (info.status == firebase_fcs_download_status_complete)
   {
@@ -1284,56 +1227,50 @@ static void firebaseDownloadCallback(
   else if (info.status == firebase_fcs_download_status_error)
   {
     Serial.printf(
-      "Erro no download: %s\n",
-      info.errorMsg.c_str()
-    );
+        "Erro no download: %s\n",
+        info.errorMsg.c_str());
   }
 }
 
 bool FirebaseManager::readDevicePriority(
-  const char* deviceId,
-  String& collectionId,
-  String& imageId,
-  bool& hasPriority
-)
+    const char *deviceId,
+    String &collectionId,
+    String &imageId,
+    bool &hasPriority)
 {
   collectionId = "";
   imageId = "";
   hasPriority = false;
 
   String priorityPath =
-    "devices/" + String(deviceId) +
-    "/config/priority";
+      "devices/" + String(deviceId) +
+      "/config/priority";
 
   _serial->println();
   _serial->println("PRIORITY: lendo configuracao...");
 
   if (!Firebase.Firestore.getDocument(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        priorityPath.c_str(),
-        ""
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          priorityPath.c_str(),
+          ""))
   {
     String error = _fbdo.errorReason();
 
     _serial->println(
-      "PRIORITY: erro na leitura:"
-    );
+        "PRIORITY: erro na leitura:");
 
     _serial->println(error);
 
     // O documento pode simplesmente ainda não existir.
     // Nesse caso, não há prioridade.
     if (
-      error.indexOf("NOT_FOUND") >= 0 ||
-      error.indexOf("not found") >= 0
-    )
+        error.indexOf("NOT_FOUND") >= 0 ||
+        error.indexOf("not found") >= 0)
     {
       _serial->println(
-        "PRIORITY: documento nao existe. Nenhuma prioridade."
-      );
+          "PRIORITY: documento nao existe. Nenhuma prioridade.");
 
       return true;
     }
@@ -1342,18 +1279,15 @@ bool FirebaseManager::readDevicePriority(
   }
 
   _serial->println(
-    "PRIORITY: documento lido."
-  );
+      "PRIORITY: documento lido.");
 
   FirebaseJson priorityJson;
 
   if (!priorityJson.setJsonData(
-        _fbdo.payload()
-      ))
+          _fbdo.payload()))
   {
     _serial->println(
-      "PRIORITY: JSON invalido."
-    );
+        "PRIORITY: JSON invalido.");
 
     return false;
   }
@@ -1361,13 +1295,11 @@ bool FirebaseManager::readDevicePriority(
   FirebaseJsonData fieldsData;
 
   if (!priorityJson.get(
-        fieldsData,
-        "fields"
-      ))
+          fieldsData,
+          "fields"))
   {
     _serial->println(
-      "PRIORITY: fields nao encontrado."
-    );
+        "PRIORITY: fields nao encontrado.");
 
     return false;
   }
@@ -1377,8 +1309,7 @@ bool FirebaseManager::readDevicePriority(
   if (!fieldsData.getJSON(fields))
   {
     _serial->println(
-      "PRIORITY: erro ao ler fields."
-    );
+        "PRIORITY: erro ao ler fields.");
 
     return false;
   }
@@ -1387,29 +1318,25 @@ bool FirebaseManager::readDevicePriority(
   FirebaseJsonData imageIdData;
 
   fields.get(
-    collectionIdData,
-    "collectionId/stringValue"
-  );
+      collectionIdData,
+      "collectionId/stringValue");
 
   fields.get(
-    imageIdData,
-    "imageId/stringValue"
-  );
+      imageIdData,
+      "imageId/stringValue");
 
   collectionId =
-    collectionIdData.to<String>();
+      collectionIdData.to<String>();
 
   imageId =
-    imageIdData.to<String>();
+      imageIdData.to<String>();
 
   if (
-    collectionId.length() == 0 ||
-    imageId.length() == 0
-  )
+      collectionId.length() == 0 ||
+      imageId.length() == 0)
   {
     _serial->println(
-      "PRIORITY: prioridade vazia."
-    );
+        "PRIORITY: prioridade vazia.");
 
     return true;
   }
@@ -1417,79 +1344,66 @@ bool FirebaseManager::readDevicePriority(
   hasPriority = true;
 
   _serial->println(
-    "=== PRIORIDADE ==="
-  );
+      "=== PRIORIDADE ===");
 
   _serial->print(
-    "Collection ID: "
-  );
+      "Collection ID: ");
 
   _serial->println(
-    collectionId
-  );
+      collectionId);
 
   _serial->print(
-    "Image ID: "
-  );
+      "Image ID: ");
 
   _serial->println(
-    imageId
-  );
+      imageId);
 
   return true;
 }
 
 bool FirebaseManager::clearDevicePriority(
-  const char* deviceId
-)
+    const char *deviceId)
 {
   String priorityPath =
-    "devices/" + String(deviceId) +
-    "/config/priority";
+      "devices/" + String(deviceId) +
+      "/config/priority";
 
   _serial->println(
-    "PRIORITY: removendo documento..."
-  );
+      "PRIORITY: removendo documento...");
 
   if (Firebase.Firestore.deleteDocument(
-        &_fbdo,
-        "einkcanvas",
-        "",
-        priorityPath.c_str(),
-        ""
-      ))
+          &_fbdo,
+          "einkcanvas",
+          "",
+          priorityPath.c_str(),
+          ""))
   {
     _serial->println(
-      "PRIORITY: documento removido."
-    );
+        "PRIORITY: documento removido.");
 
     return true;
   }
 
   _serial->println(
-    "PRIORITY: erro ao remover:"
-  );
+      "PRIORITY: erro ao remover:");
 
   _serial->println(
-    _fbdo.errorReason()
-  );
+      _fbdo.errorReason());
 
   return false;
 }
 
 bool FirebaseManager::downloadImage(
-  const char* remotePath,
-  const char* localPath
-)
+    const char *remotePath,
+    const char *localPath)
 {
   if (Firebase.Storage.download(
-        &_fbdo,
-        _bucket,
-        remotePath,
-        localPath,
-        mem_storage_type_sd,
-        firebaseDownloadCallback
-      ))
+          &_fbdo,
+          _bucket,
+          remotePath,
+          localPath,
+          mem_storage_type_sd,
+          firebaseDownloadCallback))
   {
     _serial->println("IMAGE: DOWNLOAD OK!");
     return true;

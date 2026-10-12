@@ -5,7 +5,7 @@ export type Device = {
 	name: string;
 	displayType: DisplayType;
 	orientation: DisplayOrientation;
-	updateIntervalMinutes: number;
+	updateTimes: string[];
 	ownerUid: string;
 	deviceAuthUid: string;
 };

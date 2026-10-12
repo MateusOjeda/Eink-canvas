@@ -223,9 +223,7 @@ export default function DeviceScreen() {
 			<Screen scroll>
 				<ScreenHeader
 					title={device.name}
-					subtitle={`${getDisplayTypeLabel(
-						device.displayType,
-					)} · Intervalo: ${device.updateIntervalMinutes} min`}
+					subtitle={`${getDisplayTypeLabel(device.displayType)} · ${device.updateTimes.join(" · ")}`}
 					showBackButton
 					processing={deviceProcessing}
 				/>
