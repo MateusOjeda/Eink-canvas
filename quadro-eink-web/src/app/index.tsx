@@ -159,7 +159,7 @@ function TemporaryPhotoHistory({ deviceId }: { deviceId: string }) {
 													uri: item.previewUrl,
 												}}
 												style={historyStyles.image}
-												resizeMode="contain"
+												resizeMode="cover"
 											/>
 										) : (
 											<View
@@ -264,10 +264,9 @@ const historyStyles = StyleSheet.create({
 		borderRadius: 12,
 	},
 	image: {
-		width: 66,
-		height: 66,
-		borderRadius: 8,
-		backgroundColor: "#F4F5F4",
+		width: 110,
+		height: 110,
+		borderRadius: 6,
 	},
 	imageFallback: {
 		alignItems: "center",
