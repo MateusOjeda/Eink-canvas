@@ -603,54 +603,53 @@ export default function HomeScreen() {
 								compact && styles.deviceCardCompact,
 							]}
 						>
-							<View
-								style={[
-									styles.deviceThumbnail,
-									compact && styles.deviceThumbnailCompact,
-								]}
-							>
-								<Image
-									source={
-										DEVICE_IMAGES[
-											index % DEVICE_IMAGES.length
-										]
-									}
-									style={styles.deviceImage}
-									resizeMode="cover"
-								/>
-							</View>
-
-							<View style={styles.deviceInfo}>
-								<Text
-									style={styles.deviceName}
-									numberOfLines={compact ? 2 : 1}
+							<View style={styles.deviceMain}>
+								<View
+									style={[
+										styles.deviceThumbnail,
+										compact &&
+											styles.deviceThumbnailCompact,
+									]}
 								>
-									{device.name}
-								</Text>
+									<Image
+										source={
+											DEVICE_IMAGES[
+												index % DEVICE_IMAGES.length
+											]
+										}
+										style={styles.deviceImage}
+										resizeMode="cover"
+									/>
+								</View>
 
-								<Text
-									style={styles.deviceId}
-									numberOfLines={compact ? 2 : 1}
-								>
-									{device.id}
-								</Text>
+								<View style={styles.deviceInfo}>
+									<Text style={styles.deviceName}>
+										{device.name}
+									</Text>
+
+									<Text style={styles.deviceId} selectable>
+										{device.id}
+									</Text>
+								</View>
 							</View>
 
 							<Pressable
 								style={({ pressed }) => [
 									styles.deviceButton,
-									compact && styles.deviceButtonCompact,
 									pressed && styles.deviceButtonPressed,
 								]}
 								onPress={() => {
 									router.push({
 										pathname: "/send-photo/[deviceId]",
-										params: {
-											deviceId: device.id,
-										},
+										params: { deviceId: device.id },
 									});
 								}}
 							>
+								<Feather
+									name="image"
+									size={18}
+									color="#FFFFFF"
+								/>
 								<Text style={styles.deviceButtonText}>
 									Imprimir foto
 								</Text>
@@ -864,37 +863,29 @@ const styles = StyleSheet.create({
 	},
 
 	deviceCard: {
-		minHeight: 142,
 		borderWidth: 1,
 		borderColor: "#E4E7E5",
 		borderRadius: 18,
 		backgroundColor: "#FFFFFF",
 		padding: 16,
-		paddingBottom: 0,
-
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 18,
-
+		gap: 14,
 		shadowColor: "#000000",
-		shadowOffset: {
-			width: 0,
-			height: 4,
-		},
+		shadowOffset: { width: 0, height: 4 },
 		shadowOpacity: 0.025,
 		shadowRadius: 12,
-
 		elevation: 1,
-
-		flexWrap: "wrap",
 	},
 
 	deviceCardCompact: {
-		minHeight: 118,
 		borderRadius: 16,
 		padding: 12,
-		paddingBottom: 0,
-		gap: 10,
+		gap: 12,
+	},
+
+	deviceMain: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 12,
 	},
 
 	deviceThumbnail: {
@@ -922,7 +913,7 @@ const styles = StyleSheet.create({
 
 	deviceName: {
 		fontSize: 17,
-		lineHeight: 22,
+		lineHeight: 23,
 		fontWeight: "700",
 		color: "#171A21",
 	},
@@ -932,15 +923,19 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 		lineHeight: 17,
 		color: "#747C89",
+		overflow: "hidden",
 	},
 
 	deviceButton: {
-		minHeight: 48,
-		paddingHorizontal: 18,
+		width: "100%",
+		minHeight: 46,
+		paddingHorizontal: 14,
 		borderRadius: 12,
 		backgroundColor: "#668882",
+		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
+		gap: 9,
 	},
 
 	deviceButtonCompact: {

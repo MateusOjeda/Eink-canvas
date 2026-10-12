@@ -8,6 +8,7 @@ import {
 	Text,
 	useWindowDimensions,
 	View,
+	ScrollView,
 } from "react-native";
 
 import { router } from "expo-router";
@@ -27,8 +28,10 @@ import {
 export default function SchedulePhotoScreen() {
 	const { width, height } = useWindowDimensions();
 
-	const compact = width < 420;
-	const short = height < 720;
+	console.log("Dimensões:", width, height);
+
+	const compact = width < 380;
+	const short = height < 820;
 
 	const {
 		device,
@@ -118,93 +121,106 @@ export default function SchedulePhotoScreen() {
 	}
 
 	return (
-		<View style={[styles.screen, compact && styles.screenCompact]}>
-			<View
-				style={[
-					styles.card,
-					compact && styles.cardCompact,
-					short && styles.cardShort,
-				]}
-			>
-				<View style={styles.headerRow}>
-					<Pressable
-						style={({ pressed }) => [
-							styles.backButton,
-							pressed && styles.pressed,
-						]}
-						hitSlop={10}
-						onPress={() => router.back()}
-					>
-						<Feather name="arrow-left" size={26} color="#4A4F54" />
-					</Pressable>
-
-					<Text
-						style={[styles.title, compact && styles.titleCompact]}
-					>
-						Imprimir foto
-					</Text>
-				</View>
-
-				<Text
-					style={[
-						styles.description,
-						compact && styles.descriptionCompact,
-						short && styles.descriptionShort,
-					]}
-				>
-					Agende uma impressão para{" "}
-					<Text style={styles.descriptionStrong}>{device.name}</Text>.
-				</Text>
-
+		<ScrollView>
+			<View style={[styles.screen, compact && styles.screenCompact]}>
 				<View
 					style={[
-						styles.deviceSummary,
-						compact && styles.deviceSummaryCompact,
-						short && styles.deviceSummaryShort,
+						styles.card,
+						compact && styles.cardCompact,
+						short && styles.cardShort,
 					]}
 				>
-					<View style={styles.summaryColumn}>
-						<Text style={styles.summaryLabel}>Display</Text>
-
-						<Text style={styles.summaryValue} numberOfLines={1}>
-							{getDisplayName(device)}
-						</Text>
-					</View>
-
-					<View style={styles.summaryDivider} />
-
-					<View style={styles.summaryColumn}>
-						<Text style={styles.summaryLabel}>Orientação</Text>
-
-						<Text style={styles.summaryValue}>
-							{getOrientationName(device)}
-						</Text>
-					</View>
-				</View>
-
-				<View style={[styles.readyBox, short && styles.readyBoxShort]}>
-					<View style={styles.readyIcon}>
-						<Feather name="image" size={24} color="#527F77" />
-					</View>
-
-					<View style={styles.readyContent}>
-						<Text style={styles.readyTitle}>
-							Foto pronta para imprimir
-						</Text>
+					<View style={styles.headerRow}>
+						<Pressable
+							style={({ pressed }) => [
+								styles.backButton,
+								pressed && styles.pressed,
+							]}
+							hitSlop={10}
+							onPress={() => router.back()}
+						>
+							<Feather
+								name="arrow-left"
+								size={26}
+								color="#4A4F54"
+							/>
+						</Pressable>
 
 						<Text
 							style={[
-								styles.readyText,
-								short && styles.readyTextShort,
+								styles.title,
+								compact && styles.titleCompact,
 							]}
 						>
-							A foto já foi processada para o quadro. O convidado
-							não precisa ver o preview processado.
+							Imprimir foto
 						</Text>
 					</View>
-				</View>
 
-				<View
+					<Text
+						style={[
+							styles.description,
+							compact && styles.descriptionCompact,
+							short && styles.descriptionShort,
+						]}
+					>
+						Agende uma impressão para{" "}
+						<Text style={styles.descriptionStrong}>
+							{device.name}
+						</Text>
+						.
+					</Text>
+
+					<View
+						style={[
+							styles.deviceSummary,
+							compact && styles.deviceSummaryCompact,
+							short && styles.deviceSummaryShort,
+						]}
+					>
+						<View style={styles.summaryColumn}>
+							<Text style={styles.summaryLabel}>Display</Text>
+
+							<Text style={styles.summaryValue} numberOfLines={1}>
+								{getDisplayName(device)}
+							</Text>
+						</View>
+
+						<View style={styles.summaryDivider} />
+
+						<View style={styles.summaryColumn}>
+							<Text style={styles.summaryLabel}>Orientação</Text>
+
+							<Text style={styles.summaryValue}>
+								{getOrientationName(device)}
+							</Text>
+						</View>
+					</View>
+
+					<View
+						style={[styles.readyBox, short && styles.readyBoxShort]}
+					>
+						<View style={styles.readyIcon}>
+							<Feather name="image" size={24} color="#527F77" />
+						</View>
+
+						<View style={styles.readyContent}>
+							<Text style={styles.readyTitle}>
+								Foto pronta para imprimir
+							</Text>
+
+							<Text
+								style={[
+									styles.readyText,
+									short && styles.readyTextShort,
+								]}
+							>
+								A foto já foi processada para o quadro. O
+								convidado não precisa ver o preview processado.
+							</Text>
+						</View>
+					</View>
+
+					{/* <View
 					style={[
 						styles.resultInfoBox,
 						short && styles.resultInfoBoxShort,
@@ -218,117 +234,120 @@ export default function SchedulePhotoScreen() {
 					<Text style={styles.resultInfoText} numberOfLines={1}>
 						Algoritmo: Good Display Floyd-Steinberg
 					</Text>
-				</View>
+				</View> */}
 
-				<View style={styles.durationSection}>
-					<Text style={styles.sectionTitle}>Duração</Text>
+					<View style={styles.durationSection}>
+						<Text style={styles.sectionTitle}>Duração</Text>
 
-					<Text
-						style={[
-							styles.helperText,
-							short && styles.helperTextShort,
-						]}
-					>
-						A duração começa quando a foto for exibida no quadro.
-					</Text>
-
-					<View style={styles.durationOptions}>
-						{DURATION_OPTIONS.map((option) => {
-							const selected = durationMinutes === option.minutes;
-
-							return (
-								<Pressable
-									key={option.minutes}
-									style={({ pressed }) => [
-										styles.durationOption,
-										short && styles.durationOptionShort,
-										selected &&
-											styles.durationOptionSelected,
-										pressed && styles.pressed,
-									]}
-									onPress={() => {
-										setDurationMinutes(option.minutes);
-
-										setSendError(null);
-									}}
-								>
-									<Text
-										style={[
-											styles.durationOptionText,
-											selected &&
-												styles.durationOptionTextSelected,
-										]}
-									>
-										{option.label}
-									</Text>
-								</Pressable>
-							);
-						})}
-					</View>
-				</View>
-
-				<View style={styles.processedPreviewArea}>
-					{previewUrl ? (
-						<View
+						<Text
 							style={[
-								styles.processedPreviewFrame,
-								{
-									width: compact
-										? Math.min(width * 0.5, 220)
-										: Math.min(width * 0.7, 420),
-									aspectRatio:
-										processedPhoto.width /
-										processedPhoto.height,
-								},
+								styles.helperText,
+								short && styles.helperTextShort,
 							]}
 						>
-							<Image
-								source={{ uri: previewUrl }}
-								style={styles.processedPreviewImage}
-								resizeMode="contain"
-							/>
+							A duração começa quando a foto for exibida no
+							quadro.
+						</Text>
+
+						<View style={styles.durationOptions}>
+							{DURATION_OPTIONS.map((option) => {
+								const selected =
+									durationMinutes === option.minutes;
+
+								return (
+									<Pressable
+										key={option.minutes}
+										style={({ pressed }) => [
+											styles.durationOption,
+											short && styles.durationOptionShort,
+											selected &&
+												styles.durationOptionSelected,
+											pressed && styles.pressed,
+										]}
+										onPress={() => {
+											setDurationMinutes(option.minutes);
+
+											setSendError(null);
+										}}
+									>
+										<Text
+											style={[
+												styles.durationOptionText,
+												selected &&
+													styles.durationOptionTextSelected,
+											]}
+										>
+											{option.label}
+										</Text>
+									</Pressable>
+								);
+							})}
 						</View>
-					) : null}
-				</View>
+					</View>
 
-				<View style={styles.actions}>
-					<Pressable
-						disabled={isSending}
-						style={({ pressed }) => [
-							styles.primaryButton,
-							pressed &&
-								!isSending &&
-								styles.primaryButtonPressed,
-							isSending && styles.buttonDisabled,
-						]}
-						onPress={sendTemporaryPhoto}
-					>
-						{isSending ? (
-							<ActivityIndicator color="#FFFFFF" />
-						) : (
-							<Text style={styles.primaryButtonText}>
-								Agendar impressão
-							</Text>
+					<View style={styles.processedPreviewArea}>
+						{previewUrl ? (
+							<View
+								style={[
+									styles.processedPreviewFrame,
+									{
+										width: "100%",
+										aspectRatio:
+											processedPhoto.width /
+											processedPhoto.height,
+									},
+								]}
+							>
+								<Image
+									source={{ uri: previewUrl }}
+									style={styles.processedPreviewImage}
+									resizeMode="contain"
+								/>
+							</View>
+						) : null}
+					</View>
+
+					<View style={styles.actions}>
+						<Pressable
+							disabled={isSending}
+							style={({ pressed }) => [
+								styles.primaryButton,
+								pressed &&
+									!isSending &&
+									styles.primaryButtonPressed,
+								isSending && styles.buttonDisabled,
+							]}
+							onPress={sendTemporaryPhoto}
+						>
+							{isSending ? (
+								<ActivityIndicator color="#FFFFFF" />
+							) : (
+								<Text style={styles.primaryButtonText}>
+									Agendar impressão
+								</Text>
+							)}
+						</Pressable>
+
+						{sendError && (
+							<Text style={styles.sendError}>{sendError}</Text>
 						)}
-					</Pressable>
 
-					{sendError && (
-						<Text style={styles.sendError}>{sendError}</Text>
-					)}
-
-					<Pressable
-						style={({ pressed }) => [
-							styles.secondaryButton,
-							pressed && styles.pressed,
-						]}
-						onPress={() => router.replace("/")}
-						disabled={isSending}
-					>
-						<Text style={styles.secondaryButtonText}>Cancelar</Text>
-					</Pressable>
+						<Pressable
+							style={({ pressed }) => [
+								styles.secondaryButton,
+								pressed && styles.pressed,
+							]}
+							onPress={() => router.replace("/")}
+							disabled={isSending}
+						>
+							<Text style={styles.secondaryButtonText}>
+								Cancelar
+							</Text>
+						</Pressable>
+					</View>
 				</View>
 			</View>
-		</View>
+		</ScrollView>
 	);
 }
 
@@ -566,8 +585,6 @@ const styles = StyleSheet.create({
 	},
 
 	processedPreviewFrame: {
-		// maxHeight: 260,
-
 		borderWidth: 1,
 		borderColor: "#EEEEEE",
 		borderRadius: 12,
@@ -737,6 +754,7 @@ const styles = StyleSheet.create({
 		minHeight: 48,
 
 		marginTop: 8,
+		marginBottom: 6,
 
 		paddingHorizontal: 16,
 		paddingVertical: 12,
