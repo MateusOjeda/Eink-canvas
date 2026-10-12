@@ -158,7 +158,24 @@ export default function PickPhotoScreen() {
 					]}
 					onPress={choosePhoto}
 				>
+					<Feather name="image" size={21} color="#FFFFFF" />
 					<Text style={styles.primaryButtonText}>Escolher foto</Text>
+				</Pressable>
+
+				<Pressable
+					style={({ pressed }) => [
+						styles.secondaryButton,
+						pressed && styles.pressed,
+					]}
+					onPress={() =>
+						router.push({
+							pathname: "/send-photo/[deviceId]/search",
+							params: { deviceId: device.id },
+						})
+					}
+				>
+					<Feather name="search" size={21} color="#666666" />
+					<Text style={styles.secondaryButtonText}>Unsplash</Text>
 				</Pressable>
 			</View>
 		</View>
@@ -376,6 +393,9 @@ const styles = StyleSheet.create({
 
 		alignItems: "center",
 		justifyContent: "center",
+
+		flexDirection: "row",
+		gap: 10,
 	},
 
 	primaryButtonPressed: {
@@ -392,6 +412,7 @@ const styles = StyleSheet.create({
 	},
 
 	secondaryButton: {
+		marginTop: 12,
 		minHeight: 48,
 
 		paddingHorizontal: 16,
@@ -405,6 +426,9 @@ const styles = StyleSheet.create({
 
 		alignItems: "center",
 		justifyContent: "center",
+
+		flexDirection: "row",
+		gap: 10,
 	},
 
 	secondaryButtonText: {

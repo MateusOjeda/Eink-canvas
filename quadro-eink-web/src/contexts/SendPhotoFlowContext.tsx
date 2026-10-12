@@ -10,10 +10,7 @@ import { Alert } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
 
-import {
-	onAuthStateChanged,
-	type User,
-} from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { auth } from "../firebase/config";
 
@@ -38,10 +35,10 @@ type SendPhotoFlowContextValue = {
 	durationMinutes: number;
 	sendError: string | null;
 
+	setSelectedImage: (image: SelectedImage | null) => void;
+
 	pickImage: () => Promise<boolean>;
-	setProcessedPhoto: (
-		photo: ProcessedTemporaryPhoto | null,
-	) => void;
+	setProcessedPhoto: (photo: ProcessedTemporaryPhoto | null) => void;
 	setDurationMinutes: (minutes: number) => void;
 	setSendError: (message: string | null) => void;
 
@@ -49,10 +46,9 @@ type SendPhotoFlowContextValue = {
 	resetAll: () => void;
 };
 
-const SendPhotoFlowContext =
-	createContext<SendPhotoFlowContextValue | null>(
-		null,
-	);
+const SendPhotoFlowContext = createContext<SendPhotoFlowContextValue | null>(
+	null,
+);
 
 export function SendPhotoFlowProvider({
 	deviceId,
@@ -61,47 +57,32 @@ export function SendPhotoFlowProvider({
 	deviceId: string;
 	children: ReactNode;
 }) {
-	const [user, setUser] = useState<User | null>(
+	const [user, setUser] = useState<User | null>(null);
+
+	const [authReady, setAuthReady] = useState(false);
+
+	const [device, setDevice] = useState<AuthorizedDevice | null>(null);
+
+	const [deviceLoading, setDeviceLoading] = useState(true);
+
+	const [deviceError, setDeviceError] = useState<string | null>(null);
+
+	const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
 		null,
 	);
 
-	const [authReady, setAuthReady] =
-		useState(false);
-
-	const [device, setDevice] =
-		useState<AuthorizedDevice | null>(null);
-
-	const [deviceLoading, setDeviceLoading] =
-		useState(true);
-
-	const [deviceError, setDeviceError] =
-		useState<string | null>(null);
-
-	const [selectedImage, setSelectedImage] =
-		useState<SelectedImage | null>(null);
-
 	const [processedPhoto, setProcessedPhoto] =
-		useState<ProcessedTemporaryPhoto | null>(
-			null,
-		);
+		useState<ProcessedTemporaryPhoto | null>(null);
 
-	const [
-		durationMinutes,
-		setDurationMinutes,
-	] = useState(60);
+	const [durationMinutes, setDurationMinutes] = useState(60);
 
-	const [sendError, setSendError] =
-		useState<string | null>(null);
+	const [sendError, setSendError] = useState<string | null>(null);
 
 	useEffect(() => {
-		const unsubscribe =
-			onAuthStateChanged(
-				auth,
-				(currentUser) => {
-					setUser(currentUser);
-					setAuthReady(true);
-				},
-			);
+		const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+			setUser(currentUser);
+			setAuthReady(true);
+		});
 
 		return unsubscribe;
 	}, []);
@@ -113,9 +94,7 @@ export function SendPhotoFlowProvider({
 
 		if (!user) {
 			setDevice(null);
-			setDeviceError(
-				"Você precisa estar autenticado.",
-			);
+			setDeviceError("Você precisa estar autenticado.");
 			setDeviceLoading(false);
 			return;
 		}
@@ -127,20 +106,14 @@ export function SendPhotoFlowProvider({
 				setDeviceLoading(true);
 				setDeviceError(null);
 
-				const devices =
-					await getAuthorizedDevices(
-						user.uid,
-					);
+				const devices = await getAuthorizedDevices(user.uid);
 
 				if (!active) {
 					return;
 				}
 
 				const authorized =
-					devices.find(
-						(item) =>
-							item.id === deviceId,
-					) ?? null;
+					devices.find((item) => item.id === deviceId) ?? null;
 
 				if (!authorized) {
 					setDevice(null);
@@ -152,16 +125,11 @@ export function SendPhotoFlowProvider({
 
 				setDevice(authorized);
 			} catch (error) {
-				console.error(
-					"Erro ao carregar quadro autorizado:",
-					error,
-				);
+				console.error("Erro ao carregar quadro autorizado:", error);
 
 				if (active) {
 					setDevice(null);
-					setDeviceError(
-						"Não foi possível carregar o quadro.",
-					);
+					setDeviceError("Não foi possível carregar o quadro.");
 				}
 			} finally {
 				if (active) {
@@ -178,14 +146,11 @@ export function SendPhotoFlowProvider({
 	}, [authReady, user, deviceId]);
 
 	const pickImage = async () => {
-		const result =
-			await ImagePicker.launchImageLibraryAsync(
-				{
-					mediaTypes: ["images"],
-					allowsEditing: false,
-					quality: 1,
-				},
-			);
+		const result = await ImagePicker.launchImageLibraryAsync({
+			mediaTypes: ["images"],
+			allowsEditing: false,
+			quality: 1,
+		});
 
 		if (result.canceled) {
 			return false;
@@ -238,6 +203,8 @@ export function SendPhotoFlowProvider({
 				durationMinutes,
 				sendError,
 
+				setSelectedImage,
+
 				pickImage,
 				setProcessedPhoto,
 				setDurationMinutes,
@@ -253,8 +220,7 @@ export function SendPhotoFlowProvider({
 }
 
 export function useSendPhotoFlow() {
-	const context =
-		useContext(SendPhotoFlowContext);
+	const context = useContext(SendPhotoFlowContext);
 
 	if (!context) {
 		throw new Error(

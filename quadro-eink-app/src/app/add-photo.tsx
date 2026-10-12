@@ -474,6 +474,7 @@ export default function AddPhotoScreen() {
 													? { collectionId }
 													: {}),
 												mode: photoMode,
+												orientation: orientation,
 											},
 										})
 									}

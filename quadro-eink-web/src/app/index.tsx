@@ -26,6 +26,287 @@ import {
 	type AuthorizedDevice,
 } from "../firebase/permissions";
 
+import {
+	getTemporaryPhotoHistory,
+	type TemporaryPhotoHistoryItem,
+	type TemporaryPhotoHistoryPage,
+} from "../firebase/photos";
+
+function TemporaryPhotoHistory({ deviceId }: { deviceId: string }) {
+	const [expanded, setExpanded] = useState(false);
+	const [loading, setLoading] = useState(false);
+	const [loadingMore, setLoadingMore] = useState(false);
+	const [loaded, setLoaded] = useState(false);
+	const [error, setError] = useState(false);
+	const [items, setItems] = useState<TemporaryPhotoHistoryItem[]>([]);
+	const [lastDoc, setLastDoc] =
+		useState<TemporaryPhotoHistoryPage["lastDoc"]>(null);
+	const [hasMore, setHasMore] = useState(false);
+
+	const loadPage = async (more = false) => {
+		if (loading || loadingMore) return;
+		if (more && (!hasMore || !lastDoc)) return;
+
+		setError(false);
+
+		if (more) {
+			setLoadingMore(true);
+		} else {
+			setLoading(true);
+		}
+
+		try {
+			const page = await getTemporaryPhotoHistory(
+				deviceId,
+				more ? lastDoc : null,
+			);
+
+			setItems((previous) =>
+				more ? [...previous, ...page.items] : page.items,
+			);
+			setLastDoc(page.lastDoc);
+			setHasMore(page.hasMore);
+			setLoaded(true);
+		} catch (err) {
+			console.error("Erro ao carregar histórico de fotos:", err);
+			setError(true);
+		} finally {
+			setLoading(false);
+			setLoadingMore(false);
+		}
+	};
+
+	const toggle = () => {
+		const next = !expanded;
+		setExpanded(next);
+
+		if (next && !loaded) {
+			void loadPage();
+		}
+	};
+
+	const formatDate = (date: Date | null) => {
+		if (!date) return "Data indisponível";
+
+		return date.toLocaleString("pt-BR", {
+			dateStyle: "short",
+			timeStyle: "short",
+		});
+	};
+
+	const formatDuration = (minutes: number) => {
+		if (minutes >= 60 && minutes % 60 === 0) {
+			return `${minutes / 60} h`;
+		}
+
+		return `${minutes} min`;
+	};
+
+	return (
+		<View style={historyStyles.container}>
+			<Pressable
+				style={({ pressed }) => [
+					historyStyles.toggle,
+					pressed && historyStyles.pressed,
+				]}
+				onPress={toggle}
+			>
+				<Text style={historyStyles.toggleText}>Ver histórico</Text>
+				<Feather
+					name={expanded ? "chevron-up" : "chevron-down"}
+					size={19}
+					color="#668882"
+				/>
+			</Pressable>
+
+			{expanded && (
+				<View style={historyStyles.panel}>
+					{loading ? (
+						<ActivityIndicator size="small" color="#668882" />
+					) : error ? (
+						<View>
+							<Text style={historyStyles.message}>
+								Não foi possível carregar o histórico.
+							</Text>
+							<Pressable onPress={() => void loadPage()}>
+								<Text style={historyStyles.action}>
+									Tentar novamente
+								</Text>
+							</Pressable>
+						</View>
+					) : items.length === 0 ? (
+						<Text style={historyStyles.message}>
+							Você ainda não enviou fotos temporárias para este
+							quadro.
+						</Text>
+					) : (
+						<>
+							<ScrollView
+								style={historyStyles.list}
+								contentContainerStyle={
+									historyStyles.listContent
+								}
+								nestedScrollEnabled
+							>
+								{items.map((item) => (
+									<View
+										key={item.id}
+										style={historyStyles.item}
+									>
+										{item.previewUrl ? (
+											<Image
+												source={{
+													uri: item.previewUrl,
+												}}
+												style={historyStyles.image}
+												resizeMode="contain"
+											/>
+										) : (
+											<View
+												style={[
+													historyStyles.image,
+													historyStyles.imageFallback,
+												]}
+											>
+												<Feather
+													name="image"
+													size={23}
+													color="#9AA6A3"
+												/>
+											</View>
+										)}
+
+										<View style={historyStyles.details}>
+											<Text style={historyStyles.date}>
+												{formatDate(item.createdAt)}
+											</Text>
+											<Text
+												style={historyStyles.duration}
+											>
+												Duração:{" "}
+												{formatDuration(
+													item.durationMinutes,
+												)}
+											</Text>
+										</View>
+									</View>
+								))}
+							</ScrollView>
+
+							{hasMore && (
+								<Pressable
+									style={historyStyles.moreButton}
+									disabled={loadingMore}
+									onPress={() => void loadPage(true)}
+								>
+									{loadingMore ? (
+										<ActivityIndicator
+											size="small"
+											color="#668882"
+										/>
+									) : (
+										<Text style={historyStyles.action}>
+											Mostrar mais
+										</Text>
+									)}
+								</Pressable>
+							)}
+						</>
+					)}
+				</View>
+			)}
+		</View>
+	);
+}
+
+const historyStyles = StyleSheet.create({
+	container: {
+		width: "100%",
+		marginTop: 10,
+		borderTopWidth: 1,
+		borderTopColor: "#E9ECEA",
+	},
+	toggle: {
+		minHeight: 42,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 7,
+	},
+	toggleText: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: "#668882",
+	},
+	pressed: {
+		opacity: 0.7,
+	},
+	panel: {
+		maxHeight: 260,
+		paddingTop: 6,
+		paddingBottom: 12,
+	},
+	list: {
+		flexShrink: 1,
+		minHeight: 0,
+	},
+	listContent: {
+		gap: 10,
+		paddingBottom: 8,
+	},
+	item: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 12,
+		padding: 9,
+		borderWidth: 1,
+		borderColor: "#E9ECEA",
+		borderRadius: 12,
+	},
+	image: {
+		width: 66,
+		height: 66,
+		borderRadius: 8,
+		backgroundColor: "#F4F5F4",
+	},
+	imageFallback: {
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	details: {
+		flex: 1,
+		gap: 6,
+	},
+	date: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: "#333333",
+	},
+	duration: {
+		fontSize: 12,
+		color: "#777777",
+	},
+	message: {
+		paddingVertical: 12,
+		fontSize: 13,
+		lineHeight: 19,
+		color: "#777777",
+		textAlign: "center",
+	},
+	action: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: "#668882",
+		textAlign: "center",
+		paddingTop: 10,
+	},
+	moreButton: {
+		minHeight: 38,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+});
+
 const DEVICE_IMAGES = [
 	require("../../assets/placeholders/home-device-1.png"),
 	require("../../assets/placeholders/home-device-2.png"),
@@ -374,6 +655,8 @@ export default function HomeScreen() {
 									Imprimir foto
 								</Text>
 							</Pressable>
+
+							<TemporaryPhotoHistory deviceId={device.id} />
 						</View>
 					))}
 				</View>
@@ -587,6 +870,7 @@ const styles = StyleSheet.create({
 		borderRadius: 18,
 		backgroundColor: "#FFFFFF",
 		padding: 16,
+		paddingBottom: 0,
 
 		flexDirection: "row",
 		alignItems: "center",
@@ -601,12 +885,15 @@ const styles = StyleSheet.create({
 		shadowRadius: 12,
 
 		elevation: 1,
+
+		flexWrap: "wrap",
 	},
 
 	deviceCardCompact: {
 		minHeight: 118,
 		borderRadius: 16,
 		padding: 12,
+		paddingBottom: 0,
 		gap: 10,
 	},
 

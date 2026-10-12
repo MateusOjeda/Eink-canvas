@@ -24,6 +24,10 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 
 import { colors, radius, spacing, typography } from "@/theme";
 
+import type { DisplayOrientation } from "@/types/display";
+
+import { useDeviceProcessing } from "@/contexts/DeviceProcessingContext";
+
 const ACCESS_KEY = process.env.EXPO_PUBLIC_UNSPLASH_ACCESS_KEY;
 
 const PAGE_SIZE = 10;
@@ -57,10 +61,11 @@ type UnsplashSearchResponse = {
 };
 
 export default function SearchPhotoScreen() {
-	const { deviceId, collectionId, mode } = useLocalSearchParams<{
+	const { deviceId, collectionId, mode, orientation } = useLocalSearchParams<{
 		deviceId: string;
-		collectionId?: string;
-		mode?: "collection" | "temporary";
+		collectionId: string;
+		mode: "collection" | "temporary";
+		orientation: DisplayOrientation;
 	}>();
 
 	const [query, setQuery] = useState("Montanhas");
@@ -74,6 +79,10 @@ export default function SearchPhotoScreen() {
 	const [selectingPhoto, setSelectingPhoto] = useState(false);
 
 	const [searchLanguage, setSearchLanguage] = useState<"pt" | "en">("pt");
+	const [selectedOrientation, setSelectedOrientation] =
+		useState<DisplayOrientation>(orientation);
+
+	const deviceProcessing = useDeviceProcessing();
 
 	const searchPhotos = useCallback(
 		async (searchQuery: string, requestedPage = 1) => {
@@ -105,7 +114,7 @@ export default function SearchPhotoScreen() {
 					query: searchQuery.trim(),
 					page: String(requestedPage),
 					per_page: String(PAGE_SIZE),
-					orientation: "landscape",
+					orientation: selectedOrientation,
 					content_filter: "high",
 					lang: searchLanguage,
 				});
@@ -157,7 +166,7 @@ export default function SearchPhotoScreen() {
 				setLoadingMore(false);
 			}
 		},
-		[searchLanguage],
+		[searchLanguage, selectedOrientation],
 	);
 
 	useEffect(() => {
@@ -207,7 +216,11 @@ export default function SearchPhotoScreen() {
 			<Stack.Screen options={{ headerShown: false }} />
 
 			<Screen scroll>
-				<ScreenHeader title="Buscar fotos" showBackButton />
+				<ScreenHeader
+					title="Buscar fotos"
+					showBackButton
+					processing={deviceProcessing}
+				/>
 
 				<Card padding="md" style={styles.searchCard}>
 					<Text style={styles.fieldLabel}>
@@ -246,12 +259,12 @@ export default function SearchPhotoScreen() {
 						</Pressable>
 					</View>
 
-					<View style={styles.languageSelector}>
+					<View style={styles.pressableSelector}>
 						<Pressable
 							style={[
-								styles.languageOption,
+								styles.pressableOption,
 								searchLanguage === "pt" &&
-									styles.languageOptionActive,
+									styles.pressableOptionActive,
 							]}
 							onPress={() => setSearchLanguage("pt")}
 							accessibilityRole="button"
@@ -261,9 +274,9 @@ export default function SearchPhotoScreen() {
 						>
 							<Text
 								style={[
-									styles.languageText,
+									styles.pressableText,
 									searchLanguage === "pt" &&
-										styles.languageTextActive,
+										styles.pressableTextActive,
 								]}
 							>
 								Português
@@ -272,9 +285,9 @@ export default function SearchPhotoScreen() {
 
 						<Pressable
 							style={[
-								styles.languageOption,
+								styles.pressableOption,
 								searchLanguage === "en" &&
-									styles.languageOptionActive,
+									styles.pressableOptionActive,
 							]}
 							onPress={() => setSearchLanguage("en")}
 							accessibilityRole="button"
@@ -284,12 +297,60 @@ export default function SearchPhotoScreen() {
 						>
 							<Text
 								style={[
-									styles.languageText,
+									styles.pressableText,
 									searchLanguage === "en" &&
-										styles.languageTextActive,
+										styles.pressableTextActive,
 								]}
 							>
 								English
+							</Text>
+						</Pressable>
+					</View>
+
+					<View style={styles.pressableSelector}>
+						<Pressable
+							style={[
+								styles.pressableOption,
+								selectedOrientation === "portrait" &&
+									styles.pressableOptionActive,
+							]}
+							onPress={() => setSelectedOrientation("portrait")}
+							accessibilityRole="button"
+							accessibilityState={{
+								selected: selectedOrientation === "portrait",
+							}}
+						>
+							<Text
+								style={[
+									styles.pressableText,
+									selectedOrientation === "portrait" &&
+										styles.pressableTextActive,
+								]}
+							>
+								Retrato
+							</Text>
+						</Pressable>
+
+						<Pressable
+							style={[
+								styles.pressableOption,
+								selectedOrientation === "landscape" &&
+									styles.pressableOptionActive,
+							]}
+							onPress={() => setSelectedOrientation("landscape")}
+							accessibilityRole="button"
+							accessibilityState={{
+								selected: selectedOrientation === "landscape",
+							}}
+						>
+							<Text
+								style={[
+									styles.pressableText,
+									selectedOrientation === "landscape" &&
+										styles.pressableTextActive,
+								]}
+							>
+								Paisagem
 							</Text>
 						</Pressable>
 					</View>
@@ -524,13 +585,13 @@ const styles = StyleSheet.create({
 		marginBottom: spacing.xxl,
 	},
 
-	languageSelector: {
+	pressableSelector: {
 		flexDirection: "row",
 		gap: spacing.sm,
 		marginTop: spacing.md,
 	},
 
-	languageOption: {
+	pressableOption: {
 		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
@@ -540,17 +601,17 @@ const styles = StyleSheet.create({
 		borderRadius: radius.md,
 	},
 
-	languageOptionActive: {
+	pressableOptionActive: {
 		backgroundColor: colors.primary,
 		borderColor: colors.primary,
 	},
 
-	languageText: {
+	pressableText: {
 		...typography.body,
 		color: colors.text,
 	},
 
-	languageTextActive: {
+	pressableTextActive: {
 		color: colors.white,
 		fontWeight: "600",
 	},
