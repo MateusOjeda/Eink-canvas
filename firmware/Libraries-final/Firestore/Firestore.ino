@@ -132,7 +132,7 @@ bool secondsUntilNextScheduledUpdate(uint64_t &secondsUntilNext)
 
   time_t now = time(nullptr);
 
-  if (now <= 0)
+  if (now < 1700000000) // 1970
   {
     Serial.println("SCHEDULE: relogio nao sincronizado.");
     return false;
@@ -187,7 +187,7 @@ bool secondsUntilNextScheduledUpdate(uint64_t &secondsUntilNext)
     time_t candidateTimestamp = mktime(&candidate);
 
     // Se o horario de hoje ja passou, considerar amanha.
-    if (candidateTimestamp <= now)
+    if (candidateTimestamp <= now + 180) // 3 minutos de tolerancia
     {
       candidate.tm_mday++;
       candidate.tm_isdst = -1;
@@ -376,20 +376,42 @@ bool setProcessingStatus(
 
 bool syncClock()
 {
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("CLOCK: Wi-Fi desconectado.");
+    return false;
+  }
+
+  Serial.println("CLOCK: iniciando sincronizacao NTP...");
+
+  IPAddress ntpIP;
+
+  if (WiFi.hostByName("pool.ntp.org", ntpIP))
+  {
+    Serial.print("CLOCK: servidor NTP = ");
+    Serial.println(ntpIP);
+  }
+  else
+  {
+    Serial.println("CLOCK: falha ao resolver DNS.");
+  }
+
   configTzTime(
-      "America/Sao_Paulo",
+      "BRT3",
       "pool.ntp.org",
+      "time.google.com",
       "time.nist.gov");
 
   struct tm timeInfo;
 
-  if (!getLocalTime(&timeInfo))
+  if (!getLocalTime(&timeInfo, 15000))
   {
     Serial.println("CLOCK: falha ao sincronizar.");
     return false;
   }
 
   Serial.println("CLOCK: sincronizado.");
+  Serial.println(&timeInfo, "%d/%m/%Y %H:%M:%S");
 
   return true;
 }
@@ -3978,7 +4000,7 @@ void setup()
   Serial.println(" minutos...");
 
   esp_sleep_enable_timer_wakeup(
-      sleepSeconds * 1000000ULL);
+      (uint64_t)(sleepSeconds * 1000000.0 * 1.011257)); // Ajuste para compensar o erro do timer do ESP32
 
   delay(500);
 

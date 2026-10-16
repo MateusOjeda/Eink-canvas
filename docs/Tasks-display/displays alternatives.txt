@@ -1,0 +1,8 @@
+Característica	7,5"	4,2"	3,7"
+Modelo	GDEY075T7-T01	GDEY042T	GDEY037T03-T02
+Resolução (L × A)	800 × 480 px	400 × 300 px	416 × 240 px
+Área ativa (L × A)	163,2 × 97,92 mm	84,8 × 63,6 mm	81,5 × 47 mm
+Densidade	124 PPI	120 PPI	130 PPI
+Touchscreen	Sim	Sim	Sim
+Frontlight	Não	Sim	Não
+Preço informado	R$ 654	R$ 456	R$ 298
