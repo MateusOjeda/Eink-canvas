@@ -1,6 +1,10 @@
 #include <WiFi.h>
 #include <SPI.h>
 #include <time.h>
+#include <HTTPClient.h>
+#include <sys/time.h>
+#include <esp_heap_caps.h>
+#include <Preferences.h>
 
 #include "SDManager.h"
 #include "FirebaseManager.h"
@@ -39,6 +43,98 @@ String deviceId;
 #define BUTTON_WIFI 42 // Botao 11
 
 #define displayRatePeriod 120
+
+// O registro de erros nao usa cartao SD nem depende de horario/rede.
+// O unico registro pendente fica em NVS, sobrescrito a cada nova falha.
+static bool firebaseAuthenticatedForErrors = false;
+
+String getCurrentTimestamp();
+
+static bool hasReliableClock()
+{
+  return time(nullptr) >= 1735689600; // 2025-01-01 UTC
+}
+
+static bool flushLastErrorToFirebase()
+{
+  if (!firebaseAuthenticatedForErrors || WiFi.status() != WL_CONNECTED ||
+      !Firebase.ready())
+    return false;
+
+  Preferences prefs;
+  if (!prefs.begin("inkcanvas_err", true))
+    return false;
+  const bool pending = prefs.getBool("pending", false);
+  const String code = prefs.getString("code", "");
+  const String message = prefs.getString("message", "");
+  const String occurredAt = prefs.getString("occurred", "");
+  const int httpCode = prefs.getInt("http", 0);
+  prefs.end();
+
+  if (!pending || code.isEmpty())
+    return true;
+
+  const String id = WiFi.macAddress();
+  if (id.isEmpty() || id == "00:00:00:00:00:00")
+    return false;
+
+  if (!firebase.writeLastError(id.c_str(), code, message, occurredAt, httpCode))
+    return false; // Nao apagar pendencia; repetir na proxima conexao.
+
+  if (prefs.begin("inkcanvas_err", false))
+  {
+    prefs.putBool("pending", false);
+    prefs.end();
+  }
+  Serial.printf("DIAGNOSTICS: ultimo erro enviado (%s).\n", code.c_str());
+  return true;
+}
+
+static void registerLastError(const char *code, const char *message,
+                              int httpCode = 0)
+{
+  Serial.printf("DIAGNOSTICS ERROR [%s]: %s (HTTP %d)\n",
+                code, message, httpCode);
+  Preferences prefs;
+  if (!prefs.begin("inkcanvas_err", false))
+  {
+    Serial.println("DIAGNOSTICS: nao foi possivel abrir NVS.");
+    return;
+  }
+
+  // Campos curtos; jamais incluir credenciais, tokens, SSID ou payload de fotos.
+  prefs.putString("code", String(code).substring(0, 64));
+  prefs.putString("message", String(message).substring(0, 200));
+  prefs.putString("occurred", hasReliableClock() ? getCurrentTimestamp() : "");
+  prefs.putInt("http", httpCode);
+  prefs.putBool("pending", true); // Marcar pendente somente apos os dados.
+  prefs.end();
+
+  // Quando ha Firebase, publica de imediato. Se falhar, a NVS preserva.
+  // O envio nunca chama registerLastError: impede recursao e logs infinitos.
+  if (firebaseAuthenticatedForErrors)
+    flushLastErrorToFirebase();
+}
+
+static bool failSync(const char *code, const char *message,
+                     int httpCode = 0)
+{
+  registerLastError(code, message, httpCode);
+  return false;
+}
+
+// Diagnostico de RAM interna: o Wi-Fi precisa desta memoria ate com PSRAM.
+static void printMemory(const char *step)
+{
+  const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+  Serial.printf(
+      "MEM [%s] interno=%u B | maior=%u B | minimo=%u B | PSRAM=%u B\n",
+      step,
+      (unsigned)heap_caps_get_free_size(caps),
+      (unsigned)heap_caps_get_largest_free_block(caps),
+      (unsigned)heap_caps_get_minimum_free_size(caps),
+      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+}
 
 // ============================================================
 // FUNCOES DE APOIO
@@ -374,6 +470,62 @@ bool setProcessingStatus(
       timestamp.c_str());
 }
 
+// NTP nao e utilizado. Para HTTPS com validacao, o ESP precisa ter hora
+// plausivel primeiro; o Date HTTP apenas inicializa esse relogio.
+static bool parseHttpDateUtc(const String &dateHeader, time_t &epoch)
+{
+  char dayName[4] = {}, monthName[4] = {};
+  int day = 0, year = 0, hour = -1, minute = -1, second = -1;
+  if (!dateHeader.endsWith(" GMT") ||
+      sscanf(dateHeader.c_str(), "%3s, %d %3s %d %d:%d:%d GMT",
+             dayName, &day, monthName, &year,
+             &hour, &minute, &second) != 7)
+    return false;
+
+  static const char *months[] = {
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  int month = -1;
+  for (int i = 0; i < 12; ++i)
+    if (strcmp(monthName, months[i]) == 0)
+    {
+      month = i;
+      break;
+    }
+  if (month < 0 || year < 2025 || year > 2100 || day < 1 || day > 31 ||
+      hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
+      second < 0 || second > 60)
+    return false;
+
+  // Converte calendario UTC para Unix epoch sem timegm(), indisponivel
+  // em algumas versoes do core ESP32. Nao altera o fuso global (BRT3).
+  const int m = month + 1;  // 1..12
+  const int adjustedYear = year - (m <= 2 ? 1 : 0);
+  const int era = adjustedYear / 400;
+  const unsigned yearOfEra = (unsigned)(adjustedYear - era * 400);
+  const unsigned dayOfYear =
+      (153u * (unsigned)(m + (m > 2 ? -3 : 9)) + 2u) / 5u +
+      (unsigned)day - 1u;
+  const unsigned yearOfEraDays =
+      yearOfEra * 365u + yearOfEra / 4u - yearOfEra / 100u + dayOfYear;
+  const int64_t daysSinceEpoch =
+      (int64_t)era * 146097LL + (int64_t)yearOfEraDays - 719468LL;
+  const int64_t epochSeconds =
+      daysSinceEpoch * 86400LL + (int64_t)hour * 3600LL +
+      (int64_t)minute * 60LL + second;
+  if (epochSeconds < 1735689600LL)
+    return false;
+  const time_t parsed = (time_t)epochSeconds;
+  struct tm checked = {};
+  gmtime_r(&parsed, &checked);
+  if (checked.tm_year != year - 1900 || checked.tm_mon != month ||
+      checked.tm_mday != day || checked.tm_hour != hour ||
+      checked.tm_min != minute)
+    return false;
+  epoch = parsed;
+  return true;
+}
+
 bool syncClock()
 {
   if (WiFi.status() != WL_CONNECTED)
@@ -382,42 +534,60 @@ bool syncClock()
     return false;
   }
 
-  Serial.println("CLOCK: iniciando sincronizacao NTP...");
+  // Mesmo fuso do firmware anterior (Brasilia UTC-3); SEM configTzTime().
+  setenv("TZ", "BRT3", 1);
+  tzset();
 
-  IPAddress ntpIP;
-
-  if (WiFi.hostByName("pool.ntp.org", ntpIP))
+  const char *urls[] = {
+      "http://connectivitycheck.gstatic.com/generate_204",
+      "http://www.google.com/generate_204"};
+  for (const char *url : urls)
   {
-    Serial.print("CLOCK: servidor NTP = ");
-    Serial.println(ntpIP);
+    WiFiClient client;
+    HTTPClient http;
+    http.setConnectTimeout(5000);
+    http.setTimeout(7000);
+    if (!http.begin(client, url))
+      continue;
+    const char *headers[] = {"Date"};
+    http.collectHeaders(headers, 1);
+    const int status = http.GET();
+    const String dateHeader = http.header("Date");
+    http.end();
+
+    time_t epoch = 0;
+    if (status == 204 && parseHttpDateUtc(dateHeader, epoch))
+    {
+      struct timeval tv = {};
+      tv.tv_sec = epoch;
+      if (settimeofday(&tv, nullptr) == 0)
+      {
+        struct tm local = {};
+        localtime_r(&epoch, &local);
+        Serial.printf("CLOCK: HTTP Date OK (%04d-%02d-%02d %02d:%02d:%02d BRT).\n",
+                      local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
+                      local.tm_hour, local.tm_min, local.tm_sec);
+        return true;
+      }
+    }
+    Serial.printf("CLOCK: Date HTTP indisponivel (status %d).\n", status);
   }
-  else
+
+  // Se o RTC manteve uma data plausivel durante deep sleep, nao bloquear
+  // a atualizacao por falha temporaria dos endpoints HTTP.
+  if (hasReliableClock())
   {
-    Serial.println("CLOCK: falha ao resolver DNS.");
+    Serial.println("CLOCK: usando relogio existente; HTTP indisponivel.");
+    return true;
   }
-
-  configTzTime(
-      "BRT3",
-      "pool.ntp.org",
-      "time.google.com",
-      "time.nist.gov");
-
-  struct tm timeInfo;
-
-  if (!getLocalTime(&timeInfo, 15000))
-  {
-    Serial.println("CLOCK: falha ao sincronizar.");
-    return false;
-  }
-
-  Serial.println("CLOCK: sincronizado.");
-  Serial.println(&timeInfo, "%d/%m/%Y %H:%M:%S");
-
-  return true;
+  Serial.println("CLOCK: falha no bootstrap de horario HTTP.");
+  return false;
 }
 
 String getCurrentTimestamp()
 {
+  if (!hasReliableClock())
+    return "";
   time_t now = time(nullptr);
 
   struct tm timeInfo;
@@ -3073,6 +3243,292 @@ bool chooseNextPhoto(
 }
 
 // ============================================================
+// v4: ESCOLHA A PARTIR DE CATALOGOS PAGINADOS NO MICROSD
+// O parser recebe somente uma linha JSON por vez.
+// ============================================================
+static const char *kPhotoCatalog = "/PHOTOS.ND";
+static const char *kTempCatalog = "/TEMP.ND";
+
+static bool catalogGetString(FirebaseJson &json, const char *key, String &out) {
+  FirebaseJsonData data;
+  if (!json.get(data, key)) return false;
+  out = data.to<String>();
+  return true;
+}
+
+static bool catalogGetBool(FirebaseJson &json, const char *key) {
+  FirebaseJsonData data;
+  return json.get(data, key) && data.to<bool>();
+}
+
+static int catalogGetInt(FirebaseJson &json, const char *key) {
+  FirebaseJsonData data;
+  return json.get(data, key) ? data.to<int>() : 0;
+}
+
+static bool catalogDimensions(int &width, int &height) {
+  File configFile = SD.open("/config.json", FILE_READ);
+  if (!configFile) return false;
+  FirebaseJson config;
+  bool parsed = config.setJsonData(configFile.readString());
+  configFile.close();
+  if (!parsed) return false;
+  String orientation;
+  if (!catalogGetString(config, "orientation", orientation)) return false;
+  if (orientation == "landscape") { width = 800; height = 480; return true; }
+  if (orientation == "portrait")  { width = 480; height = 800; return true; }
+  return false;
+}
+
+// Limite por linha: uma descricao gigantesca nao deve esgotar a RAM do ESP32.
+static bool catalogReadLine(File &file, FirebaseJson &row) {
+  if (!file.available()) return false;
+  String line;
+  if (!line.reserve(512)) return false;
+  // Evita readStringUntil() alocar uma linha de tamanho ilimitado.
+  while (file.available()) {
+    const int byteValue = file.read();
+    if (byteValue < 0 || byteValue == '\n') break;
+    if (line.length() >= 8192) {
+      Serial.println("CATALOGO: registro grande demais ou corrompido");
+      return false;
+    }
+    line += (char)byteValue;
+  }
+  line.trim();
+  return line.length() > 0 && row.setJsonData(line);
+}
+
+static bool catalogValidImage(FirebaseJson &row, int width, int height) {
+  return catalogGetBool(row, "active") &&
+         catalogGetInt(row, "width") == width &&
+         catalogGetInt(row, "height") == height;
+}
+
+static bool choosePriorityFromSD(String &imageId, String &filePath,
+                                 const String &collectionId, const String &priorityImage,
+                                 bool hasPriority) {
+  imageId = ""; filePath = "";
+  if (!hasPriority) return false;
+  int width, height;
+  if (!catalogDimensions(width, height)) return false;
+  File file = SD.open(kPhotoCatalog, FILE_READ);
+  if (!file) return false;
+  bool inCollection = false;
+  bool found = false;
+  while (file.available()) {
+    FirebaseJson row;
+    if (!catalogReadLine(file, row)) break;
+    String type, id;
+    if (!catalogGetString(row, "type", type) || !catalogGetString(row, "id", id)) continue;
+    if (type == "collection") {
+      inCollection = id == collectionId && catalogGetBool(row, "active");
+    } else if (type == "image" && inCollection && id == priorityImage &&
+               catalogValidImage(row, width, height)) {
+      if (!catalogGetString(row, "epaperFilePath", filePath) || !filePath.length()) break;
+      imageId = id;
+      stateJson.set("lastCollectionId", collectionId);
+      found = true;
+      break;
+    }
+  }
+  file.close();
+  return found;
+}
+
+static bool chooseTemporaryFromSD(String &imageId, String &filePath) {
+  imageId = ""; filePath = "";
+  int width, height;
+  if (!catalogDimensions(width, height)) return false;
+  time_t now = time(nullptr);
+  struct tm localNow;
+  if (localtime_r(&now, &localNow) == nullptr) return false;
+  const int year = localNow.tm_year + 1900;
+  const int month = localNow.tm_mon + 1;
+  const int day = localNow.tm_mday;
+  File file = SD.open(kTempCatalog, FILE_READ);
+  if (!file) return false;
+  bool onceFound = false, yearlyFound = false;
+  time_t oldestOnce = 0, newestYearly = 0;
+  String onceId, oncePath, yearlyId, yearlyPath;
+  uint32_t onceDuration = 0;
+  while (file.available()) {
+    FirebaseJson row;
+    if (!catalogReadLine(file, row)) break;
+    if (catalogGetInt(row, "width") != width || catalogGetInt(row, "height") != height) continue;
+    String recurrence, id, path, createdAt, consumedAt;
+    if (!catalogGetString(row, "recurrence", recurrence) ||
+        !catalogGetString(row, "id", id) ||
+        !catalogGetString(row, "epaperFilePath", path) ||
+        !catalogGetString(row, "createdAt", createdAt)) continue;
+    if (!path.length()) continue;
+    time_t created = parseTimestamp(createdAt);
+    if (created <= 0) continue;
+    const bool consumed = catalogGetString(row, "consumedAt", consumedAt) && consumedAt.length() > 0;
+    if (recurrence == "once") {
+      if (consumed) continue;
+      FirebaseJsonData durationValue;
+      if (!row.get(durationValue, "durationMinutes")) continue;
+      if (!onceFound || created < oldestOnce) {
+        onceFound = true; oldestOnce = created;
+        onceId = id; oncePath = path; onceDuration = durationValue.to<uint32_t>();
+      }
+    } else if (recurrence == "yearly") {
+      if (catalogGetInt(row, "yearlyDate/month") != month ||
+          catalogGetInt(row, "yearlyDate/day") != day) continue;
+      if (consumed) {
+        time_t timestamp = parseTimestamp(consumedAt);
+        struct tm utcConsumed;
+        if (timestamp > 0 && gmtime_r(&timestamp, &utcConsumed) != nullptr &&
+            utcConsumed.tm_year + 1900 == year) continue;
+      }
+      if (!yearlyFound || created > newestYearly) {
+        yearlyFound = true; newestYearly = created;
+        yearlyId = id; yearlyPath = path;
+      }
+    }
+  }
+  file.close();
+  if (onceFound) {
+    imageId = onceId; filePath = oncePath; nextSleepMinutes = onceDuration;
+    Serial.printf("TEMPORARY: ONCE mais antiga %s, pausa %u min\n", imageId.c_str(), (unsigned)onceDuration);
+    return true;
+  }
+  if (yearlyFound) {
+    imageId = yearlyId; filePath = yearlyPath;
+    nextSleepMinutes = minutesUntilNextDay();
+    Serial.printf("TEMPORARY: YEARLY mais recente %s\n", imageId.c_str());
+    return true;
+  }
+  return false;
+}
+
+// Mantem: colecoes na ordem do Firestore, rotacao apos lastCollectionId,
+// imagens ineditas primeiro; depois a mais antiga do displayHistory.
+static bool chooseNormalFromSD(String &imageId, String &filePath) {
+  imageId = ""; filePath = "";
+  int width, height;
+  if (!catalogDimensions(width, height)) return false;
+  FirebaseJsonData last;
+  stateJson.get(last, "lastCollectionId");
+  const String lastCollectionId = last.to<String>();
+  int lastIndex = -1, collectionCount = 0;
+  {
+    File file = SD.open(kPhotoCatalog, FILE_READ);
+    if (!file) return false;
+    while (file.available()) {
+      FirebaseJson row;
+      if (!catalogReadLine(file, row)) break;
+      String type, id;
+      if (catalogGetString(row, "type", type) && type == "collection") {
+        if (catalogGetString(row, "id", id) && id == lastCollectionId) lastIndex = collectionCount;
+        ++collectionCount;
+      }
+    }
+    file.close();
+  }
+  if (!collectionCount) return false;
+  int selectedRank = collectionCount + 1;
+  String chosenCollection;
+  {
+    File file = SD.open(kPhotoCatalog, FILE_READ);
+    if (!file) return false;
+    int index = -1;
+    bool collectionActive = false;
+    while (file.available()) {
+      FirebaseJson row;
+      if (!catalogReadLine(file, row)) break;
+      String type, id;
+      if (!catalogGetString(row, "type", type)) continue;
+      if (type == "collection") {
+        ++index;
+        catalogGetString(row, "id", id);
+        collectionActive = catalogGetBool(row, "active");
+        // A associacao da imagem usa o campo collectionId do proprio registro.
+      } else if (type == "image" && collectionActive && catalogValidImage(row, width, height)) {
+        String candidateId;
+        if (!catalogGetString(row, "collectionId", candidateId)) continue;
+        const int rank = (lastIndex >= 0)
+          ? ((index - lastIndex + collectionCount - 1) % collectionCount) + 1
+          : index + 1;
+        if (rank < selectedRank) { selectedRank = rank; chosenCollection = candidateId; }
+      }
+    }
+    file.close();
+  }
+  if (!chosenCollection.length()) return false;
+  FirebaseJsonData historyData;
+  if (!stateJson.get(historyData, "displayHistory")) return false;
+  FirebaseJsonArray history;
+  if (!historyData.getArray(history)) return false;
+  int bestHistoryPosition = -2;
+  bool found = false;
+  {
+    File file = SD.open(kPhotoCatalog, FILE_READ);
+    if (!file) return false;
+    while (file.available()) {
+      FirebaseJson row;
+      if (!catalogReadLine(file, row)) break;
+      String type, collectionId, id;
+      if (!catalogGetString(row, "type", type) || type != "image" ||
+          !catalogGetString(row, "collectionId", collectionId) ||
+          collectionId != chosenCollection || !catalogValidImage(row, width, height) ||
+          !catalogGetString(row, "id", id)) continue;
+      int historyPosition = -1;
+      for (size_t h = 0; h < history.size(); ++h) {
+        FirebaseJsonData item;
+        if (!history.get(item, h)) continue;
+        FirebaseJson historyItem;
+        if (!item.getJSON(historyItem)) continue;
+        String historicId;
+        if (catalogGetString(historyItem, "imageId", historicId) && historicId == id) {
+          historyPosition = (int)h;
+          break;
+        }
+      }
+      // Fotos nunca exibidas sempre vencem qualquer posicao do historico.
+      if (!found || historyPosition == -1 || historyPosition > bestHistoryPosition) {
+        String path;
+        if (!catalogGetString(row, "epaperFilePath", path) || !path.length()) continue;
+        imageId = id; filePath = path;
+        bestHistoryPosition = historyPosition; found = true;
+        if (historyPosition == -1) break;
+      }
+    }
+    file.close();
+  }
+  if (found) {
+    stateJson.set("lastCollectionId", chosenCollection);
+    Serial.printf("PHOTOS: colecao %s, imagem %s, historico %d\n",
+                  chosenCollection.c_str(), imageId.c_str(), bestHistoryPosition);
+  }
+  return found;
+}
+
+static bool getCurrentDescriptionFromSD(String &description) {
+  description = "";
+  FirebaseJsonData current;
+  if (!stateJson.get(current, "currentImageId")) return false;
+  const String currentId = current.to<String>();
+  if (!currentId.length()) return false;
+  File file = SD.open(kPhotoCatalog, FILE_READ);
+  if (!file) return false;
+  bool found = false;
+  while (file.available()) {
+    FirebaseJson row;
+    if (!catalogReadLine(file, row)) break;
+    String type, id;
+    if (catalogGetString(row, "type", type) && type == "image" &&
+        catalogGetString(row, "id", id) && id == currentId) {
+      found = catalogGetString(row, "description", description) && description.length() > 0;
+      break;
+    }
+  }
+  file.close();
+  return found;
+}
+
+// ============================================================
 // CHOOSE DISPLAY PHOTO - choice logic
 // ============================================================
 
@@ -3082,9 +3538,7 @@ bool chooseDisplayPhoto(
     const String &priorityCollectionId,
     const String &priorityImageId,
     bool hasPriority,
-    bool &outputIsTemporary,
-    const String &photosJson,
-    const String &temporaryPhotosJson)
+    bool &outputIsTemporary)
 {
   outputImageId = "";
   outputEpaperFilePath = "";
@@ -3094,13 +3548,12 @@ bool chooseDisplayPhoto(
       "=== CHOOSE DISPLAY PHOTO ===");
 
   // PRIORIDADE
-  if (choosePriorityPhoto(
+  if (choosePriorityFromSD(
           outputImageId,
           outputEpaperFilePath,
           priorityCollectionId,
           priorityImageId,
-          hasPriority,
-          photosJson))
+          hasPriority))
   {
     Serial.println(
         "DISPLAY: usando foto PRIORITARIA.");
@@ -3109,10 +3562,9 @@ bool chooseDisplayPhoto(
   }
 
   // TEMPORARIA
-  if (chooseTemporaryPhoto(
+  if (chooseTemporaryFromSD(
           outputImageId,
-          outputEpaperFilePath,
-          temporaryPhotosJson))
+          outputEpaperFilePath))
   {
     outputIsTemporary = true;
 
@@ -3126,10 +3578,9 @@ bool chooseDisplayPhoto(
   Serial.println(
       "DISPLAY: nenhuma prioridade ou temporaria valida.");
 
-  if (chooseNextPhoto(
+  if (chooseNormalFromSD(
           outputImageId,
-          outputEpaperFilePath,
-          photosJson))
+          outputEpaperFilePath))
   {
     Serial.println(
         "DISPLAY: usando foto NORMAL.");
@@ -3149,6 +3600,7 @@ bool chooseDisplayPhoto(
 
 bool syncDevice()
 {
+  firebaseAuthenticatedForErrors = false;
   Serial.println(
       "=== SYNC ===");
 
@@ -3164,7 +3616,7 @@ bool syncDevice()
     Serial.println(
         "ERRO: nao foi possivel conectar ao Wi-Fi salvo.");
 
-    return false;
+    return failSync("WIFI_CONNECTION", "Nao conectou ao Wi-Fi salvo");
   }
 
   Serial.println(
@@ -3189,7 +3641,7 @@ bool syncDevice()
   // ============================================================
 
   if (!syncClock())
-    return false;
+    return failSync("CLOCK_SYNC", "Falha obtendo horario HTTP");
 
   // ============================================================
   // SD
@@ -3205,7 +3657,7 @@ bool syncDevice()
     Serial.println(
         "ERRO: nao foi possivel inicializar o SD.");
 
-    return false;
+    return failSync("SD_INIT", "Nao inicializou cartao SD");
   }
 
   // ============================================================
@@ -3217,7 +3669,7 @@ bool syncDevice()
     Serial.println(
         "ERRO: nao foi possivel carregar state.");
 
-    return false;
+    return failSync("STATE_LOAD", "Nao carregou state do SD");
   }
 
   // ============================================================
@@ -3234,8 +3686,11 @@ bool syncDevice()
     Serial.println(
         "Autenticacao Firebase falhou.");
 
-    return false;
+    return failSync("FIREBASE_AUTH", "Falha autenticando Firebase");
   }
+
+  firebaseAuthenticatedForErrors = true;
+  flushLastErrorToFirebase(); // Pendencia de boot anterior, se houver.
 
   if (!setProcessingStatus(
           deviceId,
@@ -3243,6 +3698,7 @@ bool syncDevice()
   {
     Serial.println(
         "PROCESSING: nao foi possivel registrar thinking.");
+    registerLastError("STATUS_THINKING", "Falha registrando estado thinking", firebase.lastHttpCode());
   }
 
   // ============================================================
@@ -3258,7 +3714,7 @@ bool syncDevice()
     Serial.println(
         "ERRO: não foi possível sincronizar config.");
 
-    return false;
+    return failSync("CONFIG_FETCH", "Falha lendo config do Firestore", firebase.lastHttpCode());
   }
 
   if (sd.exists("/config.json"))
@@ -3272,7 +3728,7 @@ bool syncDevice()
     Serial.println(
         "ERRO: não foi possível salvar /config.json.");
 
-    return false;
+    return failSync("CONFIG_SAVE", "Falha salvando config no SD");
   }
 
   Serial.println(
@@ -3287,20 +3743,11 @@ bool syncDevice()
   Serial.println(
       "=== SINCRONIZANDO PHOTOS ===");
 
-  String photosJson;
-
-  if (!firebase.syncPhotos(
-          deviceId.c_str(),
-          photosJson))
-  {
-    Serial.println(
-        "ERRO: não foi possível sincronizar photos.");
-
-    return false;
+  printMemory("antes PHOTOS");
+  if (!firebase.syncPhotosToSD(deviceId.c_str())) {
+    return failSync("PHOTOS_FETCH", "Falha na paginacao de fotos para microSD", firebase.lastHttpCode());
   }
-
-  Serial.println(
-      "PHOTOS: dados mantidos em RAM.");
+  printMemory("depois PHOTOS");
 
   // ============================================================
   // PRIORIDADE
@@ -3319,8 +3766,10 @@ bool syncDevice()
     Serial.println(
         "ERRO: nao foi possivel ler prioridade.");
 
-    return false;
+    return failSync("PRIORITY_FETCH", "Falha lendo prioridade do Firestore", firebase.lastHttpCode());
   }
+
+  printMemory("depois PRIORITY");
 
   // ============================================================
   // FIRESTORE - TEMP PHOTOS
@@ -3331,42 +3780,15 @@ bool syncDevice()
   Serial.println(
       "=== SINCRONIZANDO TEMP PHOTOS ===");
 
-  String temporaryPhotosJson;
-
-  if (!firebase.syncTemporaryPhotos(
-          deviceId.c_str(),
-          temporaryPhotosJson))
-  {
-    Serial.println(
-        "ERRO: não foi possível sincronizar temp photos.");
-
-    return false;
+  printMemory("antes TEMP PHOTOS");
+  if (!firebase.syncTemporaryPhotosToSD(deviceId.c_str())) {
+    return failSync("TEMP_PHOTOS_FETCH", "Falha na paginacao de temporarias para microSD", firebase.lastHttpCode());
   }
+  printMemory("depois TEMP PHOTOS");
 
-  Serial.println(
-      "TEMP PHOTOS: dados mantidos em RAM.");
-
-  // ============================================================
-  // REMOVER CACHES ANTIGOS
-  // ============================================================
-
-  if (sd.exists("/photos.json"))
-  {
-    if (sd.remove("/photos.json"))
-    {
-      Serial.println(
-          "Removido /photos.json antigo.");
-    }
-  }
-
-  if (sd.exists("/temporaryPhotos.json"))
-  {
-    if (sd.remove("/temporaryPhotos.json"))
-    {
-      Serial.println(
-          "Removido /temporaryPhotos.json antigo.");
-    }
-  }
+  // Arquivos JSON monoliticos de versoes antigas nao sao mais utilizados.
+  if (sd.exists("/photos.json")) sd.remove("/photos.json");
+  if (sd.exists("/temporaryPhotos.json")) sd.remove("/temporaryPhotos.json");
 
   // ============================================================
   // ESCOLHER FOTO
@@ -3376,15 +3798,14 @@ bool syncDevice()
   String epaperFilePath;
   bool isTemporary = false;
 
+  printMemory("antes ESCOLHA");
   if (!chooseDisplayPhoto(
           imageId,
           epaperFilePath,
           priorityCollectionId,
           priorityImageId,
           hasPriority,
-          isTemporary,
-          photosJson,
-          temporaryPhotosJson))
+          isTemporary))
   {
     Serial.println(
         "SYNC: nenhuma foto disponivel.");
@@ -3403,7 +3824,7 @@ bool syncDevice()
     Serial.println(
         "ERRO: nao foi possivel mostrar a foto.");
 
-    return false;
+    return failSync("PHOTO_SHOW", "Falha exibindo imagem ou baixando do Storage");
   }
 
   // ============================================================
@@ -3426,7 +3847,7 @@ bool syncDevice()
             consumedAt.c_str()))
     {
       Serial.println("SYNC: erro ao marcar temporary como consumida.");
-      return false;
+      return failSync("TEMP_CONSUME", "Falha marcando foto temporaria como consumida", firebase.lastHttpCode());
     }
 
     Serial.println(
@@ -3453,7 +3874,7 @@ bool syncDevice()
       Serial.println(
           "ERRO: nao foi possivel remover prioridade.");
 
-      return false;
+      return failSync("PRIORITY_CLEAR", "Falha removendo prioridade do Firestore", firebase.lastHttpCode());
     }
 
     Serial.println(
@@ -3470,7 +3891,7 @@ bool syncDevice()
     Serial.println(
         "ERRO: nao foi possivel registrar historico.");
 
-    return false;
+    return failSync("HISTORY_SAVE", "Falha salvando historico de imagens");
   }
 
   // ============================================================
@@ -3482,7 +3903,7 @@ bool syncDevice()
     Serial.println(
         "ERRO: nao foi possivel registrar state Firebase.");
 
-    return false;
+    return failSync("STATE_UPLOAD", "Falha publicando estado no Firebase", firebase.lastHttpCode());
   }
 
   // ============================================================
@@ -3495,6 +3916,7 @@ bool syncDevice()
   {
     Serial.println(
         "PROCESSING: nao foi possivel registrar idle.");
+    registerLastError("STATUS_IDLE", "Falha registrando estado idle", firebase.lastHttpCode());
   }
 
   Serial.println(
@@ -3511,6 +3933,7 @@ void button_3()
 
 void info()
 {
+  firebaseAuthenticatedForErrors = false;
   Serial.println(
       "=== INFO ===");
 
@@ -3526,6 +3949,7 @@ void info()
     Serial.println(
         "INFO: nao foi possivel conectar ao Wi-Fi.");
 
+    registerLastError("INFO_WIFI", "Nao conectou ao Wi-Fi");
     return;
   }
 
@@ -3538,6 +3962,7 @@ void info()
 
   if (!syncClock())
   {
+    registerLastError("INFO_CLOCK", "Falha obtendo horario HTTP");
     return;
   }
 
@@ -3550,6 +3975,7 @@ void info()
     Serial.println(
         "INFO: nao foi possivel inicializar o SD.");
 
+    registerLastError("INFO_SD", "Nao inicializou cartao SD");
     return;
   }
 
@@ -3562,6 +3988,7 @@ void info()
     Serial.println(
         "INFO: nao foi possivel carregar state.");
 
+    registerLastError("INFO_STATE", "Nao carregou state do SD");
     return;
   }
 
@@ -3579,8 +4006,12 @@ void info()
     Serial.println(
         "Autenticacao Firebase falhou.");
 
+    registerLastError("INFO_AUTH", "Falha autenticando Firebase");
     return;
   }
+
+  firebaseAuthenticatedForErrors = true;
+  flushLastErrorToFirebase();
 
   deviceId = WiFi.macAddress();
 
@@ -3590,29 +4021,18 @@ void info()
   {
     Serial.println(
         "PROCESSING: nao foi possivel registrar thinking.");
+    registerLastError("STATUS_THINKING", "Falha registrando estado thinking", firebase.lastHttpCode());
   }
 
   // ============================================================
   // PHOTOS
   // ============================================================
 
-  String photosJson;
-
-  Serial.println(
-      "INFO: sincronizando photos...");
-
-  if (!firebase.syncPhotos(
-          deviceId.c_str(),
-          photosJson))
-  {
-    Serial.println(
-        "INFO: nao foi possivel sincronizar photos.");
-
+  Serial.println("INFO: sincronizando catalogo paginado no SD...");
+  if (!firebase.syncPhotosToSD(deviceId.c_str())) {
+    registerLastError("INFO_PHOTOS", "Falha lendo imagens paginadas do Firestore", firebase.lastHttpCode());
     return;
   }
-
-  Serial.println(
-      "INFO: photos sincronizadas em RAM.");
 
   // ============================================================
   // OBTER DESCRICAO
@@ -3620,9 +4040,7 @@ void info()
 
   String description;
 
-  if (!getCurrentImageDescription(
-          description,
-          photosJson))
+  if (!getCurrentDescriptionFromSD(description))
   {
     description =
         "Esta imagem nao tem descricao.";
@@ -3638,6 +4056,7 @@ void info()
     Serial.println(
         "INFO: nao foi possivel mostrar descricao.");
 
+    registerLastError("INFO_DISPLAY", "Falha renderizando descricao");
     return;
   }
 
@@ -3657,6 +4076,7 @@ void info()
   {
     Serial.println(
         "PROCESSING: nao foi possivel registrar idle.");
+    registerLastError("STATUS_IDLE", "Falha registrando estado idle", firebase.lastHttpCode());
   }
 
   delay(displayRatePeriod * 1000);
@@ -3667,6 +4087,7 @@ void info()
   {
     Serial.println(
         "PROCESSING: nao foi possivel registrar thinking.");
+    registerLastError("STATUS_THINKING", "Falha registrando estado thinking", firebase.lastHttpCode());
   }
 
   // ============================================================
@@ -3682,6 +4103,7 @@ void info()
     Serial.println(
         "INFO: currentImageId nao encontrado.");
 
+    registerLastError("INFO_NO_IMAGE", "Estado nao possui currentImageId");
     return;
   }
 
@@ -3693,6 +4115,7 @@ void info()
     Serial.println(
         "INFO: nenhuma imagem atual.");
 
+    registerLastError("INFO_NO_CURRENT_IMAGE", "Nenhuma imagem atual registrada");
     return;
   }
 
@@ -3712,6 +4135,7 @@ void info()
     Serial.println(
         "INFO: nao foi possivel restaurar a imagem.");
 
+    registerLastError("INFO_RESTORE", "Falha restaurando imagem do SD");
     return;
   }
 
@@ -3721,6 +4145,7 @@ void info()
   {
     Serial.println(
         "PROCESSING: nao foi possivel registrar idle.");
+    registerLastError("STATUS_IDLE", "Falha registrando estado idle", firebase.lastHttpCode());
   }
 
   Serial.println(
@@ -3740,6 +4165,10 @@ void wifi()
   if (wifiManager.startConfiguration())
   {
     syncDevice();
+  }
+  else
+  {
+    registerLastError("WIFI_PROVISION", "Falha no provisionamento Wi-Fi ou Firebase");
   }
 
   Serial.println(

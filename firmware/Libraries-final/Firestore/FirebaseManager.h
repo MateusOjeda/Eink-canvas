@@ -36,6 +36,17 @@ public:
     const char* updatedAt
   );
 
+  // Reescreve um UNICO documento por dispositivo (sem colecao de eventos).
+  bool writeLastError(
+    const char* deviceId,
+    const String& code,
+    const String& message,
+    const String& occurredAtUtc,
+    int httpCode
+  );
+
+  int lastHttpCode();
+
   bool downloadImage(
     const char* remotePath,
     const char* localPath
@@ -49,6 +60,10 @@ public:
     const char* deviceId,
     const char* collectionId
   );
+
+  // v4: paginas do Firestore diretamente em catálogos JSONL no microSD.
+  bool syncPhotosToSD(const char* deviceId);
+  bool syncTemporaryPhotosToSD(const char* deviceId);
 
   bool syncPhotos(
     const char* deviceId,

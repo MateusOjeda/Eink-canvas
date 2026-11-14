@@ -258,21 +258,11 @@ bool FirebaseManager::syncPhotos(
       continue;
     }
 
-    FirebaseJsonData collectionName;
     FirebaseJsonData collectionActive;
-    FirebaseJsonData collectionCreatedAt;
-
-    fieldsJson.get(
-        collectionName,
-        "name/stringValue");
 
     fieldsJson.get(
         collectionActive,
         "active/booleanValue");
-
-    fieldsJson.get(
-        collectionCreatedAt,
-        "createdAt/timestampValue");
 
     FirebaseJson collectionJson;
 
@@ -283,14 +273,6 @@ bool FirebaseManager::syncPhotos(
     collectionJson.set(
         "active",
         collectionActive.to<bool>());
-
-    collectionJson.set(
-        "createdAt",
-        collectionCreatedAt.to<String>());
-
-    collectionJson.set(
-        "name",
-        collectionName.to<String>());
 
     String imagesPath =
         collectionsPath +
@@ -392,8 +374,6 @@ bool FirebaseManager::syncPhotos(
       }
 
       FirebaseJsonData active;
-      FirebaseJsonData previewPath;
-      FirebaseJsonData thumbnailPath;
       FirebaseJsonData epaperFilePath;
       FirebaseJsonData width;
       FirebaseJsonData height;
@@ -403,14 +383,6 @@ bool FirebaseManager::syncPhotos(
       imageFields.get(
           active,
           "active/booleanValue");
-
-      imageFields.get(
-          previewPath,
-          "previewPath/stringValue");
-
-      imageFields.get(
-          thumbnailPath,
-          "thumbnailPath/stringValue");
 
       imageFields.get(
           epaperFilePath,
@@ -437,14 +409,6 @@ bool FirebaseManager::syncPhotos(
       imageJson.set(
           "active",
           active.to<bool>());
-
-      imageJson.set(
-          "previewPath",
-          previewPath.to<String>());
-
-      imageJson.set(
-          "thumbnailPath",
-          thumbnailPath.to<String>());
 
       imageJson.set(
           "epaperFilePath",
@@ -490,10 +454,7 @@ bool FirebaseManager::syncPhotos(
 
   photosJson.toString(output, false);
 
-  _serial->println();
-  _serial->println("=== PHOTOS JSON ===");
-  _serial->println(output);
-  _serial->println("PHOTOS: JSON MONTADO!");
+  _serial->printf("PHOTOS: resumo montado (%u bytes).\n", (unsigned)output.length());
 
   return true;
 }
@@ -1204,6 +1165,43 @@ bool FirebaseManager::writeProcessingStatus(
   return false;
 }
 
+bool FirebaseManager::writeLastError(
+    const char *deviceId,
+    const String &code,
+    const String &message,
+    const String &occurredAtUtc,
+    int httpCode)
+{
+  if (!deviceId || !deviceId[0] || WiFi.status() != WL_CONNECTED ||
+      !Firebase.ready())
+    return false;
+
+  // Documento com ID constante: patch substitui os campos do ultimo erro.
+  const String path = String("devices/") + deviceId + "/diagnostics/lastError";
+  FirebaseJson payload;
+  payload.set("fields/code/stringValue", code);
+  payload.set("fields/message/stringValue", message);
+  payload.set("fields/occurredAtUtc/stringValue",
+              occurredAtUtc.length() ? occurredAtUtc : String("unknown"));
+  payload.set("fields/timeKnown/booleanValue", occurredAtUtc.length() > 0);
+  payload.set("fields/httpCode/integerValue", String(httpCode));
+
+  const bool ok = Firebase.Firestore.patchDocument(
+      &_fbdo, "einkcanvas", "", path.c_str(), payload.raw(),
+      "code,message,occurredAtUtc,timeKnown,httpCode");
+  if (!ok && _serial)
+  {
+    _serial->print("DIAGNOSTICS: nao foi possivel enviar ultimo erro: ");
+    _serial->println(_fbdo.errorReason());
+  }
+  return ok;
+}
+
+int FirebaseManager::lastHttpCode()
+{
+  return _fbdo.httpCode();
+}
+
 static void firebaseDownloadCallback(
     FCS_DownloadStatusInfo info)
 {
@@ -1413,4 +1411,255 @@ bool FirebaseManager::downloadImage(
   _serial->println(_fbdo.errorReason());
 
   return false;
+}
+// INK CANVAS v4: catalogos paginados em SD, sem alterar schema Firestore.
+// Cada resposta contem no maximo quatro documentos; nenhum catalogo e acumulado em RAM.
+#include <SD.h>
+
+namespace {
+constexpr int kCatalogPageSize = 4;
+constexpr int kMaxCatalogPages = 10000; // Falhar explicitamente, jamais produzir catalogo truncado.
+
+String catalogDocumentId(const String &name) {
+  const int slash = name.lastIndexOf('/');
+  return slash >= 0 ? name.substring(slash + 1) : name;
+}
+
+String catalogFieldString(FirebaseJson &fields, const char *path) {
+  FirebaseJsonData d;
+  return fields.get(d, path) ? d.to<String>() : String("");
+}
+
+int catalogFieldInt(FirebaseJson &fields, const char *path) {
+  FirebaseJsonData d;
+  return fields.get(d, path) ? d.to<int>() : 0;
+}
+
+bool catalogFieldBool(FirebaseJson &fields, const char *path) {
+  FirebaseJsonData d;
+  return fields.get(d, path) && d.to<bool>();
+}
+
+bool catalogWriteRow(File &file, FirebaseJson &row) {
+  String line;
+  row.toString(line, false);
+  // Limite tambem na geracao: o leitor jamais encontrara um registro maior.
+  if (line.length() > 8192) return false;
+  return file.println(line) == line.length() + 2; // println: CRLF no ESP32
+}
+
+typedef bool (*CatalogWriter)(FirebaseJson &fields, const String &id, File &file, void *ctx);
+
+bool catalogWriteCollection(FirebaseJson &fields, const String &id, File &file, void *) {
+  FirebaseJson row;
+  row.set("type", "collection");
+  row.set("id", id);
+  row.set("active", catalogFieldBool(fields, "active/booleanValue"));
+  return catalogWriteRow(file, row);
+}
+
+bool catalogWriteImage(FirebaseJson &fields, const String &id, File &file, void *context) {
+  const String &collectionId = *static_cast<String *>(context);
+  FirebaseJson row;
+  row.set("type", "image");
+  row.set("collectionId", collectionId);
+  row.set("id", id);
+  row.set("active", catalogFieldBool(fields, "active/booleanValue"));
+  row.set("width", catalogFieldInt(fields, "width/integerValue"));
+  row.set("height", catalogFieldInt(fields, "height/integerValue"));
+  row.set("epaperFilePath", catalogFieldString(fields, "epaperFilePath/stringValue"));
+  // O botao INFO consulta descricao da imagem atual.
+  row.set("description", catalogFieldString(fields, "description/stringValue"));
+  return catalogWriteRow(file, row);
+}
+
+bool catalogWriteTemporary(FirebaseJson &fields, const String &id, File &file, void *) {
+  FirebaseJson row;
+  row.set("id", id);
+  const String recurrence = catalogFieldString(fields, "recurrence/stringValue");
+  row.set("recurrence", recurrence);
+  row.set("epaperFilePath", catalogFieldString(fields, "epaperFilePath/stringValue"));
+  row.set("width", catalogFieldInt(fields, "width/integerValue"));
+  row.set("height", catalogFieldInt(fields, "height/integerValue"));
+  row.set("createdAt", catalogFieldString(fields, "createdAt/timestampValue"));
+  if (recurrence == "once") {
+    FirebaseJsonData duration;
+    if (fields.get(duration, "durationMinutes/integerValue"))
+      row.set("durationMinutes", duration.to<int>());
+  } else if (recurrence == "yearly") {
+    row.set("yearlyDate/month", catalogFieldInt(fields, "yearlyDate/mapValue/fields/month/integerValue"));
+    row.set("yearlyDate/day", catalogFieldInt(fields, "yearlyDate/mapValue/fields/day/integerValue"));
+  }
+  const String consumedAt = catalogFieldString(fields, "consumedAt/timestampValue");
+  if (consumedAt.length()) row.set("consumedAt", consumedAt);
+  return catalogWriteRow(file, row);
+}
+
+// Retorna pagina completa e extrai o proximo token ANTES de outra chamada na mesma FirebaseData.
+bool catalogReadPage(FirebaseData &fbdo, Stream &serial, const String &path,
+                     const String &token, FirebaseJson &response) {
+  if (!Firebase.Firestore.listDocuments(&fbdo, "einkcanvas", "", path.c_str(),
+                                        kCatalogPageSize, token.c_str(), "", "", false)) {
+    serial.print("CATALOGO: Falha ao consultar "); serial.println(path);
+    serial.println(fbdo.errorReason());
+    return false;
+  }
+  if (!response.setJsonData(fbdo.payload())) {
+    serial.println("CATALOGO: JSON do Firestore invalido");
+    return false;
+  }
+  return true;
+}
+
+// Callback por documento para escrita incremental, sem guardar arrays entre paginas.
+bool catalogWalkPage(FirebaseJson &response, File &file, CatalogWriter writer,
+                     void *context, String &nextToken, int &rows) {
+  FirebaseJsonData d;
+  nextToken = response.get(d, "nextPageToken") ? d.to<String>() : String("");
+  if (!response.get(d, "documents")) return true; // zero documentos
+  FirebaseJsonArray docs;
+  if (!d.getArray(docs)) return false;
+  for (size_t i = 0; i < docs.size(); ++i) {
+    FirebaseJsonData item;
+    if (!docs.get(item, i)) return false;
+    FirebaseJson doc;
+    if (!item.getJSON(doc)) return false;
+    FirebaseJsonData nameData, fieldsData;
+    if (!doc.get(nameData, "name") || !doc.get(fieldsData, "fields")) return false;
+    FirebaseJson fields;
+    if (!fieldsData.getJSON(fields)) return false;
+    if (!writer(fields, catalogDocumentId(nameData.to<String>()), file, context)) return false;
+    ++rows;
+  }
+  return true;
+}
+
+// Restaura um backup interrompido pela falta de energia durante a troca de arquivo.
+void catalogRestoreBackup(const char *path, const char *backup) {
+  if (!SD.exists(path) && SD.exists(backup)) SD.rename(backup, path);
+}
+
+bool catalogPromote(const char *temp, const char *path, const char *backup) {
+  catalogRestoreBackup(path, backup);
+  SD.remove(backup);
+  const bool hadOld = SD.exists(path);
+  if (hadOld && !SD.rename(path, backup)) return false;
+  if (!SD.rename(temp, path)) {
+    if (hadOld) SD.rename(backup, path);
+    return false;
+  }
+  if (hadOld) SD.remove(backup);
+  return true;
+}
+}
+
+bool FirebaseManager::syncPhotosToSD(const char *deviceId) {
+  const char *temp = "/PHOTOS.TMP";
+  const char *path = "/PHOTOS.ND";
+  const char *backup = "/PHOTOS.BAK";
+  catalogRestoreBackup(path, backup);
+  SD.remove(temp);
+  File file = SD.open(temp, FILE_WRITE);
+  if (!file) return false;
+
+  const String collectionsPath = "devices/" + String(deviceId) + "/collections";
+  String token;
+  int rows = 0, totalImages = 0;
+  bool ok = true;
+  int pages = 0;
+  do {
+    if (++pages > kMaxCatalogPages) { ok = false; break; }
+    FirebaseJson response;
+    if (!catalogReadPage(_fbdo, *_serial, collectionsPath, token, response)) { ok = false; break; }
+    FirebaseJsonData documentsData;
+    String nextToken;
+    nextToken = response.get(documentsData, "nextPageToken")
+                  ? documentsData.to<String>() : String("");
+    if (nextToken.length() && nextToken == token) { ok = false; break; }
+    FirebaseJsonArray docs;
+    if (response.get(documentsData, "documents") && !documentsData.getArray(docs)) { ok = false; break; }
+    for (size_t i = 0; ok && i < docs.size(); ++i) {
+      FirebaseJsonData item;
+      FirebaseJson doc;
+      FirebaseJsonData name, fieldsData;
+      FirebaseJson fields;
+      if (!docs.get(item,i) || !item.getJSON(doc) ||
+          !doc.get(name,"name") || !doc.get(fieldsData,"fields") ||
+          !fieldsData.getJSON(fields)) { ok = false; break; }
+      String collectionId = catalogDocumentId(name.to<String>());
+      if (!catalogWriteCollection(fields, collectionId, file, nullptr)) { ok = false; break; }
+      ++rows;
+      const String imagesPath = collectionsPath + "/" + collectionId + "/images";
+      String imageToken;
+      int imagePages = 0;
+      do {
+        if (++imagePages > kMaxCatalogPages) { ok = false; break; }
+        FirebaseJson imageResponse;
+        if (!catalogReadPage(_fbdo, *_serial, imagesPath, imageToken, imageResponse)) { ok = false; break; }
+        String nextImageToken;
+        int pageRows = 0;
+        if (!catalogWalkPage(imageResponse, file, catalogWriteImage,
+                             &collectionId, nextImageToken, pageRows)) { ok = false; break; }
+        totalImages += pageRows;
+        if (nextImageToken.length() && nextImageToken == imageToken) { ok = false; break; }
+        imageToken = nextImageToken;
+        delay(0);
+      } while (ok && imageToken.length());
+    }
+    token = nextToken;
+    delay(0);
+  } while (ok && token.length());
+
+  file.flush();
+  file.close();
+  if (!ok) {
+    SD.remove(temp);
+    _serial->println("PHOTOS: catalogo incompleto descartado");
+    return false;
+  }
+  if (!catalogPromote(temp, path, backup)) {
+    _serial->println("PHOTOS: falha ao publicar catalogo no SD");
+    return false;
+  }
+  _serial->printf("PHOTOS: SD OK, %d colecoes, %d imagens, %d paginas de colecoes\n",
+                  rows, totalImages, pages);
+  return true;
+}
+
+bool FirebaseManager::syncTemporaryPhotosToSD(const char *deviceId) {
+  const char *temp = "/TEMP.TMP";
+  const char *path = "/TEMP.ND";
+  const char *backup = "/TEMP.BAK";
+  catalogRestoreBackup(path, backup);
+  SD.remove(temp);
+  File file = SD.open(temp, FILE_WRITE);
+  if (!file) return false;
+  const String source = "devices/" + String(deviceId) + "/temporaryPhotos";
+  String token;
+  int count = 0, pages = 0;
+  bool ok = true;
+  do {
+    if (++pages > kMaxCatalogPages) { ok = false; break; }
+    FirebaseJson response;
+    if (!catalogReadPage(_fbdo, *_serial, source, token, response)) { ok = false; break; }
+    String nextToken;
+    if (!catalogWalkPage(response, file, catalogWriteTemporary, nullptr,
+                         nextToken, count)) { ok = false; break; }
+    if (nextToken.length() && nextToken == token) { ok = false; break; }
+    token = nextToken;
+    delay(0);
+  } while (ok && token.length());
+  file.flush();
+  file.close();
+  if (!ok) {
+    SD.remove(temp);
+    _serial->println("TEMPORARY: catalogo incompleto descartado");
+    return false;
+  }
+  if (!catalogPromote(temp, path, backup)) {
+    _serial->println("TEMPORARY: falha ao publicar catalogo no SD");
+    return false;
+  }
+  _serial->printf("TEMPORARY: SD OK, %d documentos, %d paginas\n", count, pages);
+  return true;
 }
