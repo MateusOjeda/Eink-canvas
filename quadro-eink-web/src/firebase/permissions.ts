@@ -1,4 +1,12 @@
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import {
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    serverTimestamp,
+    setDoc,
+} from "firebase/firestore";
+import type { User } from "firebase/auth";
 
 import { db } from "./config";
 
@@ -61,4 +69,53 @@ export async function getAuthorizedDevices(
 	return devices.filter(
 		(device): device is AuthorizedDevice => device !== null,
 	);
+}
+
+export type PublicDevice = {
+    id: string;
+    name: string;
+    ownerUid: string;
+    displayType: DisplayType;
+    orientation: DisplayOrientation;
+};
+
+export async function getPublicDevices(): Promise<PublicDevice[]> {
+    const snapshot = await getDocs(collection(db, "publicDevices"));
+    return snapshot.docs.map((item) => {
+        const data = item.data();
+        return {
+            id: item.id,
+            name: data.name as string,
+            ownerUid: data.ownerUid as string,
+            displayType: data.displayType as DisplayType,
+            orientation: data.orientation as DisplayOrientation,
+        };
+    });
+}
+
+export async function getPendingRequestIds(
+    uid: string,
+    publicDevices: PublicDevice[],
+): Promise<string[]> {
+    const results = await Promise.all(publicDevices.map(async (device) => {
+        const request = await getDoc(
+            doc(db, "devices", device.id, "uploadAccessRequests", uid),
+        );
+        return request.exists() ? device.id : null;
+    }));
+    return results.filter((id): id is string => id !== null);
+}
+
+export async function requestUploadAccess(
+    user: User,
+    deviceId: string,
+): Promise<void> {
+    if (!user.email) {
+        throw new Error("Sua conta Google não possui um e-mail.");
+    }
+
+    await setDoc(
+        doc(db, "devices", deviceId, "uploadAccessRequests", user.uid),
+        { email: user.email, requestedAt: serverTimestamp() },
+    );
 }

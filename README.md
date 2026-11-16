@@ -13,8 +13,8 @@ Além do aplicativo mobile, existe um web app simplificado que permite que usuá
 - Login com Firebase Authentication
 - Cadastro e gerenciamento de quadros
 - Suporte aos displays:
-  - Spectra 6 7.3"
-  - Spectra 6 13.3"
+    - Spectra 6 7.3"
+    - Spectra 6 13.3"
 - Orientação retrato e paisagem
 - Configuração do intervalo de atualização do quadro
 - Criação e gerenciamento de coleções
@@ -216,6 +216,30 @@ O development build precisa estar instalado no dispositivo antes de executar ess
 
 ```bash
 eas build -p android --profile preview
+```
+
+#### Gerar APK de preview no PC
+
+Primeira vez: (Android Studio e SDK instaldos)
+
+```bash
+npx expo prebuild --platform android
+cd android
+"sdk.dir=$($env:LOCALAPPDATA.Replace('\','/'))/Android/Sdk" | Set-Content local.properties
+```
+
+Gerar APK:
+
+```bash
+cd android
+.\gradlew.bat assembleRelease
+```
+
+Instalar com celular conectado modo depuração:
+
+```bash
+$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+& $adb install -r ".\app\build\outputs\apk\release\app-release.apk"
 ```
 
 ### Web app

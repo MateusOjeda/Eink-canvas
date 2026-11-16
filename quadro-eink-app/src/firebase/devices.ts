@@ -160,6 +160,28 @@ async function getDeviceDisplayConfig(
 	};
 }
 
+// O catálogo só contém metadados públicos, nunca deviceAuthUid.
+async function syncPublicDevice(device: Device): Promise<void> {
+    const ref = doc(db, "publicDevices", device.id);
+    const snapshot = await getDoc(ref);
+    const current = snapshot.data();
+    if (
+        current?.name === device.name &&
+        current?.displayType === device.displayType &&
+        current?.orientation === device.orientation &&
+        current?.ownerUid === device.ownerUid
+    ) {
+        return;
+    }
+
+    await setDoc(ref, {
+        name: device.name,
+        displayType: device.displayType,
+        orientation: device.orientation,
+        ownerUid: device.ownerUid,
+    });
+}
+
 export async function getDevices(): Promise<Device[]> {
 	const user = auth.currentUser;
 
@@ -174,7 +196,7 @@ export async function getDevices(): Promise<Device[]> {
 
 	const snapshot = await getDocs(devicesQuery);
 
-	return Promise.all(
+	const devices = await Promise.all(
 		snapshot.docs.map(async (document) => {
 			const data = document.data();
 			const displayConfig = await getDeviceDisplayConfig(document.id);
@@ -190,6 +212,17 @@ export async function getDevices(): Promise<Device[]> {
 			} as Device;
 		}),
 	);
+
+    // Inclui automaticamente quadros antigos no catálogo público.
+    // A mesma comparação atualiza nome/orientação quando necessário.
+    await Promise.all(devices.map(async (device) => {
+        try {
+            await syncPublicDevice(device);
+        } catch (error) {
+            console.warn("Não foi possível atualizar publicDevices:", device.id, error);
+        }
+    }));
+    return devices;
 }
 
 export async function getDevice(deviceId: string): Promise<Device | null> {
@@ -246,6 +279,12 @@ export async function createDevice(
 		displayType: device.displayType,
 		orientation: device.orientation,
 	});
+
+    try {
+        await syncPublicDevice({ ...device, ownerUid: user.uid });
+    } catch (error) {
+        console.warn("O quadro foi criado, mas a publicação no catálogo falhou:", error);
+    }
 }
 
 export async function updateDeviceAuthUid(
@@ -294,9 +333,21 @@ export async function updateDevice(
 		doc(db, "devices", deviceId, "config", "display"),
 		displayData,
 	);
+
+    // Atualiza o catálogo depois da configuração real.
+    const updated = await getDevice(deviceId);
+    if (updated) {
+        try {
+            await syncPublicDevice(updated);
+        } catch (error) {
+            console.warn("O quadro foi atualizado, mas o catálogo não foi sincronizado:", error);
+        }
+    }
 }
 
 export async function deleteDevice(deviceId: string): Promise<void> {
+    // Impede novas solicitações enquanto o quadro está sendo excluído.
+    await deleteDoc(doc(db, "publicDevices", deviceId));
 	await deleteDoc(doc(db, "devices", deviceId, "config", "display"));
 
 	await deleteDoc(doc(db, "devices", deviceId));

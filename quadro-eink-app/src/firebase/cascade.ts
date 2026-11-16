@@ -1,4 +1,5 @@
 import { deleteDevice } from "./devices";
+import { clearDeviceUploadPermissions } from "./permissions";
 
 import { deletePhotoCollection, getCollections } from "./collections";
 
@@ -55,5 +56,6 @@ export async function deleteDeviceWithContent(deviceId: string): Promise<void> {
 	 * Neste ponto não deve mais existir
 	 * conteúdo dependente do device.
 	 */
+    await clearDeviceUploadPermissions(deviceId);
 	await deleteDevice(deviceId);
 }

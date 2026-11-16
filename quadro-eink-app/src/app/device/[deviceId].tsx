@@ -292,6 +292,30 @@ export default function DeviceScreen() {
 					</Card>
 				</Pressable>
 
+				<Pressable
+                    onPress={() => router.push({
+                        pathname: "/device/[deviceId]/permissions",
+                        params: { deviceId },
+                    })}
+                    style={({ pressed }) => [pressed && styles.pressed]}
+                >
+                    <Card style={styles.historyCard}>
+                        <View style={styles.historyIcon}>
+                            <MaterialCommunityIcons
+                                name="account-group-outline"
+                                size={27}
+                                color={colors.textSecondary}
+                            />
+                        </View>
+                        <View style={styles.navigationText}>
+                            <Text style={styles.navigationTitle}>Permissões</Text>
+                            <Text style={styles.navigationSubtitle}>
+                                Autorize ou revogue o envio de fotos
+                            </Text>
+                        </View>
+                    </Card>
+                </Pressable>
+
 				<View style={styles.collectionsHeader}>
 					<Text style={styles.sectionTitle}>Coleções</Text>
 

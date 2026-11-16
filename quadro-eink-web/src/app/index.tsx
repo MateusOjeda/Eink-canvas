@@ -23,6 +23,10 @@ import { signInWithGoogle, signOutUser } from "../firebase/auth";
 
 import {
 	getAuthorizedDevices,
+    getPublicDevices,
+    getPendingRequestIds,
+    requestUploadAccess,
+    type PublicDevice,
 	type AuthorizedDevice,
 } from "../firebase/permissions";
 
@@ -331,6 +335,10 @@ export default function HomeScreen() {
 		AuthorizedDevice[] | null
 	>(null);
 
+    const [publicDevices, setPublicDevices] = useState<PublicDevice[]>([]);
+    const [pendingRequestIds, setPendingRequestIds] = useState<string[]>([]);
+    const [requestingDeviceId, setRequestingDeviceId] = useState<string | null>(null);
+    const [requestError, setRequestError] = useState<string | null>(null);
 	const [permissionError, setPermissionError] = useState(false);
 
 	useEffect(() => {
@@ -357,9 +365,15 @@ export default function HomeScreen() {
 
 				setPermissionError(false);
 
-				const devices = await getAuthorizedDevices(user.uid);
+                const [devices, catalog] = await Promise.all([
+                    getAuthorizedDevices(user.uid),
+                    getPublicDevices(),
+                ]);
+                const pending = await getPendingRequestIds(user.uid, catalog);
 
-				setAuthorizedDevices(devices);
+                setAuthorizedDevices(devices);
+                setPublicDevices(catalog.sort((a, b) => a.name.localeCompare(b.name)));
+                setPendingRequestIds(pending);
 			} catch (error) {
 				console.error("Erro ao carregar autorizações:", error);
 
@@ -378,12 +392,30 @@ export default function HomeScreen() {
 	useEffect(() => {
 		if (!user) {
 			setAuthorizedDevices(null);
+            setPublicDevices([]);
+            setPendingRequestIds([]);
+            setRequestError(null);
 			setPermissionError(false);
 			return;
 		}
 
 		loadPermissions();
 	}, [user, loadPermissions]);
+
+    const handleRequestAccess = async (deviceId: string) => {
+        if (!user || requestingDeviceId) return;
+        try {
+            setRequestError(null);
+            setRequestingDeviceId(deviceId);
+            await requestUploadAccess(user, deviceId);
+            setPendingRequestIds((old) => [...new Set([...old, deviceId])]);
+        } catch (error) {
+            console.error("Erro ao solicitar acesso:", error);
+            setRequestError("Não foi possível solicitar acesso. Atualize a lista e tente novamente.");
+        } finally {
+            setRequestingDeviceId(null);
+        }
+    };
 
 	const handleSignIn = async () => {
 		try {
@@ -453,7 +485,7 @@ export default function HomeScreen() {
 		);
 	}
 
-	if (checkingPermission || authorizedDevices === null) {
+	if (!permissionError && (checkingPermission || authorizedDevices === null)) {
 		return (
 			<View style={styles.centerContainer}>
 				<ActivityIndicator size="large" />
@@ -503,54 +535,6 @@ export default function HomeScreen() {
 		);
 	}
 
-	if (authorizedDevices.length === 0) {
-		return (
-			<View style={styles.centerContainer}>
-				<View style={styles.card}>
-					<Text style={styles.title}>Aguardando autorização</Text>
-
-					<Text style={styles.description}>
-						Sua conta foi identificada, mas ainda não possui acesso
-						a nenhum quadro.
-					</Text>
-
-					<Text style={styles.label}>E-mail</Text>
-
-					<Text style={styles.value}>{user.email ?? "—"}</Text>
-
-					<Text style={styles.label}>UID</Text>
-
-					<Text style={styles.uid} selectable>
-						{user.uid}
-					</Text>
-
-					<View style={styles.inlineButtons}>
-						<Pressable
-							style={styles.inlineSecondaryButton}
-							onPress={() => loadPermissions(true)}
-						>
-							{refreshing ? (
-								<ActivityIndicator size="small" />
-							) : (
-								<Text style={styles.inlineSecondaryButtonText}>
-									Atualizar
-								</Text>
-							)}
-						</Pressable>
-
-						<Pressable
-							style={styles.inlineSecondaryButton}
-							onPress={signOutUser}
-						>
-							<Text style={styles.inlineSecondaryButtonText}>
-								Sair
-							</Text>
-						</Pressable>
-					</View>
-				</View>
-			</View>
-		);
-	}
 
 	return (
 		<ScrollView
@@ -569,29 +553,20 @@ export default function HomeScreen() {
 						Escolha um quadro
 					</Text>
 
-					{/* <Pressable
-						style={({ pressed }) => [
-							styles.headerActionButton,
-							pressed && styles.pressed,
-						]}
-						onPress={() => loadPermissions(true)}
-						disabled={refreshing}
-					>
-						{refreshing ? (
-							<ActivityIndicator size="small" color="#5E9188" />
-						) : (
-							<Feather
-								name="refresh-cw"
-								size={21}
-								color="#5E9188"
-							/>
-						)}
-					</Pressable> */}
+					<Pressable
+                            style={({ pressed }) => [styles.headerActionButton, pressed && styles.pressed]}
+                            onPress={() => void loadPermissions(true)}
+                            disabled={refreshing}
+                        >
+                            {refreshing ? <ActivityIndicator size="small" color="#5E9188" /> :
+                                <Feather name="refresh-cw" size={21} color="#5E9188" />}
+                        </Pressable>
 				</View>
 
-				<Text style={styles.description}>
-					Você tem permissão para imprimir uma foto agendada em:
-				</Text>
+                <Text style={styles.description}>
+                    {authorizedDevices.length ? "Você pode enviar fotos para:" :
+                        "Você ainda não tem acesso a nenhum quadro. Solicite abaixo."}
+                </Text>
 
 				<View style={styles.deviceList}>
 					{authorizedDevices.map((device, index) => (
@@ -658,6 +633,46 @@ export default function HomeScreen() {
 						</View>
 					))}
 				</View>
+
+                <View style={styles.catalogSection}>
+                    <Text style={styles.catalogTitle}>Todos os quadros</Text>
+                    <Text style={styles.catalogDescription}>
+                        Solicite acesso para enviar fotos temporárias.
+                    </Text>
+                    {requestError && <Text style={styles.catalogError}>{requestError}</Text>}
+                    {publicDevices.length === 0 ? (
+                        <Text style={styles.catalogDescription}>
+                            Nenhum quadro publicado no catálogo ainda.
+                        </Text>
+                    ) : publicDevices.map((device) => {
+                        const authorized = authorizedDevices.some((item) => item.id === device.id);
+                        const pending = pendingRequestIds.includes(device.id);
+                        const owned = device.ownerUid === user.uid;
+                        return (
+                            <View key={device.id} style={styles.catalogRow}>
+                                <View style={styles.catalogInfo}>
+                                    <Text style={styles.catalogName}>{device.name}</Text>
+                                    <Text style={styles.deviceId} selectable>{device.id}</Text>
+                                </View>
+                                {owned || authorized || pending ? (
+                                    <Text style={styles.catalogStatus}>
+                                        {owned ? "Seu quadro" : authorized ? "Autorizado" : "Pendente"}
+                                    </Text>
+                                ) : (
+                                    <Pressable
+                                        style={({ pressed }) => [styles.catalogButton, pressed && styles.pressed]}
+                                        disabled={requestingDeviceId !== null}
+                                        onPress={() => void handleRequestAccess(device.id)}
+                                    >
+                                        {requestingDeviceId === device.id ? (
+                                            <ActivityIndicator size="small" color="#FFFFFF" />
+                                        ) : <Text style={styles.catalogButtonText}>Solicitar acesso</Text>}
+                                    </Pressable>
+                                )}
+                            </View>
+                        );
+                    })}
+                </View>
 
 				<View style={styles.footer}>
 					<View style={styles.footerDivider} />
@@ -951,6 +966,17 @@ const styles = StyleSheet.create({
 		fontSize: 15,
 		fontWeight: "600",
 	},
+
+    catalogSection: { marginTop: 32, borderTopWidth: 1, borderTopColor: "#E4E7E5", paddingTop: 24, gap: 12 },
+    catalogTitle: { fontSize: 24, fontWeight: "700", color: "#171A21" },
+    catalogDescription: { color: "#687080", fontSize: 14, lineHeight: 21 },
+    catalogRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, padding: 14, borderWidth: 1, borderColor: "#E4E7E5", borderRadius: 12 },
+    catalogInfo: { flex: 1, minWidth: 0 },
+    catalogName: { fontSize: 16, fontWeight: "600", color: "#171A21" },
+    catalogStatus: { color: "#668882", fontSize: 13, fontWeight: "600" },
+    catalogError: { color: "#B42318", fontSize: 13 },
+    catalogButton: { backgroundColor: "#668882", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: "center" },
+    catalogButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
 
 	footer: {
 		marginTop: "auto",

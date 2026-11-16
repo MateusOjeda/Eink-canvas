@@ -161,6 +161,16 @@ export default function PhotoScreen() {
 				priority?.imageId === photo.id &&
 				priority?.collectionId === collectionId;
 
+            if (!isPriority) {
+                // Reconfere no Firestore para evitar usar o estado desatualizado da tela.
+                const currentCollection = await getPhotoCollection(deviceId, collectionId);
+                if (!currentCollection?.active) {
+                    setPhotoCollection(currentCollection);
+                    Alert.alert("Coleção desativada", "Ative a coleção antes de definir uma foto prioritária.");
+                    return;
+                }
+            }
+
 			if (isPriority) {
 				await setDevicePriority(deviceId, null, null);
 				setPriority(null);
@@ -260,6 +270,9 @@ export default function PhotoScreen() {
 		device !== null && photoOrientation !== device.orientation;
 
 	const previewAspectRatio = photo.width / photo.height;
+    const isCurrentPriority = priority?.imageId === photo.id && priority?.collectionId === collectionId;
+    const priorityUnavailable = !photoCollection?.active && !isCurrentPriority;
+
 
 	return (
 		<>
@@ -332,12 +345,12 @@ export default function PhotoScreen() {
 				</View>
 
 				<Pressable
-					disabled={updatingPriority}
+					disabled={updatingPriority || priorityUnavailable}
 					onPress={handlePriorityChange}
 					style={({ pressed }) => [
 						styles.priorityButton,
 						pressed && !updatingPriority && styles.pressed,
-						updatingPriority && styles.priorityButtonDisabled,
+						(updatingPriority || priorityUnavailable) && styles.priorityButtonDisabled,
 					]}
 				>
 					{updatingPriority ? (
@@ -367,6 +380,12 @@ export default function PhotoScreen() {
 						</>
 					)}
 				</Pressable>
+
+                {priorityUnavailable && (
+                    <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 6 }}>
+                        Ative a coleção para definir esta foto como prioritária.
+                    </Text>
+                )}
 
 				<Text style={styles.sectionTitle}>Descrição</Text>
 
