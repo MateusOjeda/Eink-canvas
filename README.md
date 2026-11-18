@@ -254,29 +254,8 @@ O `-c` limpa o cache do Expo antes de iniciar.
 
 #### Gerar build e publicar
 
-Gerar os arquivos estáticos:
-
 ```bash
-npx expo export -p web
-```
-
-Os arquivos são gerados em:
-
-```text
-dist/
-```
-
-Publicar no Firebase Hosting:
-
-```bash
-firebase deploy --only hosting
-```
-
-Fluxo completo:
-
-```bash
-npx expo export -p web
-firebase deploy --only hosting
+node scripts/deploy-web.mjs
 ```
 
 ### Firebase Functions

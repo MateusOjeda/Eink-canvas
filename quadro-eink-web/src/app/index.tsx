@@ -19,14 +19,21 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { auth } from "../firebase/config";
 
-import { signInWithGoogle, signOutUser } from "../firebase/auth";
+import {
+	finishGoogleRedirectSignIn,
+	googleAuthDiagnostics,
+	hadRecentGoogleRedirectAttempt,
+	googleSignInErrorMessage,
+	signInWithGoogle,
+	signOutUser,
+} from "../firebase/auth";
 
 import {
 	getAuthorizedDevices,
-    getPublicDevices,
-    getPendingRequestIds,
-    requestUploadAccess,
-    type PublicDevice,
+	getPublicDevices,
+	getPendingRequestIds,
+	requestUploadAccess,
+	type PublicDevice,
 	type AuthorizedDevice,
 } from "../firebase/permissions";
 
@@ -326,6 +333,11 @@ export default function HomeScreen() {
 	const [loading, setLoading] = useState(true);
 
 	const [signingIn, setSigningIn] = useState(false);
+	const [authError, setAuthError] = useState<string | null>(null);
+	const [authDiagnostic, setAuthDiagnostic] = useState<string>(
+		() =>
+			googleAuthDiagnostics() + "\nredirect=aguardando\nauth=aguardando",
+	);
 
 	const [checkingPermission, setCheckingPermission] = useState(false);
 
@@ -335,19 +347,69 @@ export default function HomeScreen() {
 		AuthorizedDevice[] | null
 	>(null);
 
-    const [publicDevices, setPublicDevices] = useState<PublicDevice[]>([]);
-    const [pendingRequestIds, setPendingRequestIds] = useState<string[]>([]);
-    const [requestingDeviceId, setRequestingDeviceId] = useState<string | null>(null);
-    const [requestError, setRequestError] = useState<string | null>(null);
+	const [publicDevices, setPublicDevices] = useState<PublicDevice[]>([]);
+	const [pendingRequestIds, setPendingRequestIds] = useState<string[]>([]);
+	const [requestingDeviceId, setRequestingDeviceId] = useState<string | null>(
+		null,
+	);
+	const [requestError, setRequestError] = useState<string | null>(null);
 	const [permissionError, setPermissionError] = useState(false);
 
 	useEffect(() => {
+		let active = true;
+		// Recupera o resultado ao retornar do Google no Safari/Android.
+		// Sem isso, um erro de redirect poderia ficar invisivel ao usuario.
+		void finishGoogleRedirectSignIn()
+			.then((result) => {
+				if (!active) return;
+				console.info("AUTH DIAG: getRedirectResult", result);
+				setAuthDiagnostic(
+					googleAuthDiagnostics() +
+						`\nredirect=${result}\nauth=${auth.currentUser ? "usuario" : "sem-usuario"}`,
+				);
+				if (
+					result === "sem-resultado" &&
+					hadRecentGoogleRedirectAttempt() &&
+					!auth.currentUser
+				) {
+					setAuthError(
+						"O Google voltou, mas o Firebase nao recebeu uma sessao. Veja o diagnostico abaixo.",
+					);
+				}
+			})
+			.catch((error: unknown) => {
+				console.error("AUTH DIAG: erro no redirect", error);
+				if (!active) return;
+				const code =
+					error && typeof error === "object" && "code" in error
+						? String(error.code)
+						: "desconhecido";
+				setAuthDiagnostic(
+					googleAuthDiagnostics() + `\nredirect=erro:${code}`,
+				);
+				setAuthError(googleSignInErrorMessage(error));
+			});
+
 		const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+			if (!active) return;
+			console.info(
+				"AUTH DIAG: onAuthStateChanged",
+				currentUser ? "usuario" : "sem-usuario",
+			);
 			setUser(currentUser);
 			setLoading(false);
+			setAuthDiagnostic(
+				(previous) =>
+					previous.replace(/\nauth=[^\n]*/, "") +
+					`\nauth=${currentUser ? "usuario" : "sem-usuario"}`,
+			);
+			if (currentUser) setAuthError(null);
 		});
 
-		return unsubscribe;
+		return () => {
+			active = false;
+			unsubscribe();
+		};
 	}, []);
 
 	const loadPermissions = useCallback(
@@ -365,15 +427,17 @@ export default function HomeScreen() {
 
 				setPermissionError(false);
 
-                const [devices, catalog] = await Promise.all([
-                    getAuthorizedDevices(user.uid),
-                    getPublicDevices(),
-                ]);
-                const pending = await getPendingRequestIds(user.uid, catalog);
+				const [devices, catalog] = await Promise.all([
+					getAuthorizedDevices(user.uid),
+					getPublicDevices(),
+				]);
+				const pending = await getPendingRequestIds(user.uid, catalog);
 
-                setAuthorizedDevices(devices);
-                setPublicDevices(catalog.sort((a, b) => a.name.localeCompare(b.name)));
-                setPendingRequestIds(pending);
+				setAuthorizedDevices(devices);
+				setPublicDevices(
+					catalog.sort((a, b) => a.name.localeCompare(b.name)),
+				);
+				setPendingRequestIds(pending);
 			} catch (error) {
 				console.error("Erro ao carregar autorizações:", error);
 
@@ -392,9 +456,9 @@ export default function HomeScreen() {
 	useEffect(() => {
 		if (!user) {
 			setAuthorizedDevices(null);
-            setPublicDevices([]);
-            setPendingRequestIds([]);
-            setRequestError(null);
+			setPublicDevices([]);
+			setPendingRequestIds([]);
+			setRequestError(null);
 			setPermissionError(false);
 			return;
 		}
@@ -402,27 +466,31 @@ export default function HomeScreen() {
 		loadPermissions();
 	}, [user, loadPermissions]);
 
-    const handleRequestAccess = async (deviceId: string) => {
-        if (!user || requestingDeviceId) return;
-        try {
-            setRequestError(null);
-            setRequestingDeviceId(deviceId);
-            await requestUploadAccess(user, deviceId);
-            setPendingRequestIds((old) => [...new Set([...old, deviceId])]);
-        } catch (error) {
-            console.error("Erro ao solicitar acesso:", error);
-            setRequestError("Não foi possível solicitar acesso. Atualize a lista e tente novamente.");
-        } finally {
-            setRequestingDeviceId(null);
-        }
-    };
+	const handleRequestAccess = async (deviceId: string) => {
+		if (!user || requestingDeviceId) return;
+		try {
+			setRequestError(null);
+			setRequestingDeviceId(deviceId);
+			await requestUploadAccess(user, deviceId);
+			setPendingRequestIds((old) => [...new Set([...old, deviceId])]);
+		} catch (error) {
+			console.error("Erro ao solicitar acesso:", error);
+			setRequestError(
+				"Não foi possível solicitar acesso. Atualize a lista e tente novamente.",
+			);
+		} finally {
+			setRequestingDeviceId(null);
+		}
+	};
 
 	const handleSignIn = async () => {
 		try {
+			setAuthError(null);
 			setSigningIn(true);
 			await signInWithGoogle();
 		} catch (error) {
 			console.error("Erro ao entrar com Google:", error);
+			setAuthError(googleSignInErrorMessage(error));
 		} finally {
 			setSigningIn(false);
 		}
@@ -480,12 +548,26 @@ export default function HomeScreen() {
 							</>
 						)}
 					</Pressable>
+					{authError ? (
+						<Text
+							accessibilityRole="alert"
+							style={styles.authError}
+						>
+							{authError}
+						</Text>
+					) : null}
+					<Text selectable style={styles.authDiagnostic}>
+						{"DIAGNOSTICO LOGIN\n" + authDiagnostic}
+					</Text>
 				</View>
 			</View>
 		);
 	}
 
-	if (!permissionError && (checkingPermission || authorizedDevices === null)) {
+	if (
+		!permissionError &&
+		(checkingPermission || authorizedDevices === null)
+	) {
 		return (
 			<View style={styles.centerContainer}>
 				<ActivityIndicator size="large" />
@@ -535,7 +617,6 @@ export default function HomeScreen() {
 		);
 	}
 
-
 	return (
 		<ScrollView
 			style={styles.screen}
@@ -554,19 +635,30 @@ export default function HomeScreen() {
 					</Text>
 
 					<Pressable
-                            style={({ pressed }) => [styles.headerActionButton, pressed && styles.pressed]}
-                            onPress={() => void loadPermissions(true)}
-                            disabled={refreshing}
-                        >
-                            {refreshing ? <ActivityIndicator size="small" color="#5E9188" /> :
-                                <Feather name="refresh-cw" size={21} color="#5E9188" />}
-                        </Pressable>
+						style={({ pressed }) => [
+							styles.headerActionButton,
+							pressed && styles.pressed,
+						]}
+						onPress={() => void loadPermissions(true)}
+						disabled={refreshing}
+					>
+						{refreshing ? (
+							<ActivityIndicator size="small" color="#5E9188" />
+						) : (
+							<Feather
+								name="refresh-cw"
+								size={21}
+								color="#5E9188"
+							/>
+						)}
+					</Pressable>
 				</View>
 
-                <Text style={styles.description}>
-                    {authorizedDevices.length ? "Você pode enviar fotos para:" :
-                        "Você ainda não tem acesso a nenhum quadro. Solicite abaixo."}
-                </Text>
+				<Text style={styles.description}>
+					{authorizedDevices.length
+						? "Você pode enviar fotos para:"
+						: "Você ainda não tem acesso a nenhum quadro. Solicite abaixo."}
+				</Text>
 
 				<View style={styles.deviceList}>
 					{authorizedDevices.map((device, index) => (
@@ -634,45 +726,85 @@ export default function HomeScreen() {
 					))}
 				</View>
 
-                <View style={styles.catalogSection}>
-                    <Text style={styles.catalogTitle}>Todos os quadros</Text>
-                    <Text style={styles.catalogDescription}>
-                        Solicite acesso para enviar fotos temporárias.
-                    </Text>
-                    {requestError && <Text style={styles.catalogError}>{requestError}</Text>}
-                    {publicDevices.length === 0 ? (
-                        <Text style={styles.catalogDescription}>
-                            Nenhum quadro publicado no catálogo ainda.
-                        </Text>
-                    ) : publicDevices.map((device) => {
-                        const authorized = authorizedDevices.some((item) => item.id === device.id);
-                        const pending = pendingRequestIds.includes(device.id);
-                        const owned = device.ownerUid === user.uid;
-                        return (
-                            <View key={device.id} style={styles.catalogRow}>
-                                <View style={styles.catalogInfo}>
-                                    <Text style={styles.catalogName}>{device.name}</Text>
-                                    <Text style={styles.deviceId} selectable>{device.id}</Text>
-                                </View>
-                                {owned || authorized || pending ? (
-                                    <Text style={styles.catalogStatus}>
-                                        {owned ? "Seu quadro" : authorized ? "Autorizado" : "Pendente"}
-                                    </Text>
-                                ) : (
-                                    <Pressable
-                                        style={({ pressed }) => [styles.catalogButton, pressed && styles.pressed]}
-                                        disabled={requestingDeviceId !== null}
-                                        onPress={() => void handleRequestAccess(device.id)}
-                                    >
-                                        {requestingDeviceId === device.id ? (
-                                            <ActivityIndicator size="small" color="#FFFFFF" />
-                                        ) : <Text style={styles.catalogButtonText}>Solicitar acesso</Text>}
-                                    </Pressable>
-                                )}
-                            </View>
-                        );
-                    })}
-                </View>
+				<View style={styles.catalogSection}>
+					<Text style={styles.catalogTitle}>Todos os quadros</Text>
+					<Text style={styles.catalogDescription}>
+						Solicite acesso para enviar fotos temporárias.
+					</Text>
+					{requestError && (
+						<Text style={styles.catalogError}>{requestError}</Text>
+					)}
+					{publicDevices.length === 0 ? (
+						<Text style={styles.catalogDescription}>
+							Nenhum quadro publicado no catálogo ainda.
+						</Text>
+					) : (
+						publicDevices.map((device) => {
+							const authorized = authorizedDevices.some(
+								(item) => item.id === device.id,
+							);
+							const pending = pendingRequestIds.includes(
+								device.id,
+							);
+							const owned = device.ownerUid === user.uid;
+							return (
+								<View key={device.id} style={styles.catalogRow}>
+									<View style={styles.catalogInfo}>
+										<Text style={styles.catalogName}>
+											{device.name}
+										</Text>
+										<Text
+											style={styles.deviceId}
+											selectable
+										>
+											{device.id}
+										</Text>
+									</View>
+									{owned || authorized || pending ? (
+										<Text style={styles.catalogStatus}>
+											{owned
+												? "Seu quadro"
+												: authorized
+													? "Autorizado"
+													: "Pendente"}
+										</Text>
+									) : (
+										<Pressable
+											style={({ pressed }) => [
+												styles.catalogButton,
+												pressed && styles.pressed,
+											]}
+											disabled={
+												requestingDeviceId !== null
+											}
+											onPress={() =>
+												void handleRequestAccess(
+													device.id,
+												)
+											}
+										>
+											{requestingDeviceId ===
+											device.id ? (
+												<ActivityIndicator
+													size="small"
+													color="#FFFFFF"
+												/>
+											) : (
+												<Text
+													style={
+														styles.catalogButtonText
+													}
+												>
+													Solicitar acesso
+												</Text>
+											)}
+										</Pressable>
+									)}
+								</View>
+							);
+						})
+					)}
+				</View>
 
 				<View style={styles.footer}>
 					<View style={styles.footerDivider} />
@@ -967,16 +1099,38 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 
-    catalogSection: { marginTop: 32, borderTopWidth: 1, borderTopColor: "#E4E7E5", paddingTop: 24, gap: 12 },
-    catalogTitle: { fontSize: 24, fontWeight: "700", color: "#171A21" },
-    catalogDescription: { color: "#687080", fontSize: 14, lineHeight: 21 },
-    catalogRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, padding: 14, borderWidth: 1, borderColor: "#E4E7E5", borderRadius: 12 },
-    catalogInfo: { flex: 1, minWidth: 0 },
-    catalogName: { fontSize: 16, fontWeight: "600", color: "#171A21" },
-    catalogStatus: { color: "#668882", fontSize: 13, fontWeight: "600" },
-    catalogError: { color: "#B42318", fontSize: 13 },
-    catalogButton: { backgroundColor: "#668882", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 40, justifyContent: "center" },
-    catalogButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
+	catalogSection: {
+		marginTop: 32,
+		borderTopWidth: 1,
+		borderTopColor: "#E4E7E5",
+		paddingTop: 24,
+		gap: 12,
+	},
+	catalogTitle: { fontSize: 24, fontWeight: "700", color: "#171A21" },
+	catalogDescription: { color: "#687080", fontSize: 14, lineHeight: 21 },
+	catalogRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: 10,
+		padding: 14,
+		borderWidth: 1,
+		borderColor: "#E4E7E5",
+		borderRadius: 12,
+	},
+	catalogInfo: { flex: 1, minWidth: 0 },
+	catalogName: { fontSize: 16, fontWeight: "600", color: "#171A21" },
+	catalogStatus: { color: "#668882", fontSize: 13, fontWeight: "600" },
+	catalogError: { color: "#B42318", fontSize: 13 },
+	catalogButton: {
+		backgroundColor: "#668882",
+		borderRadius: 10,
+		paddingHorizontal: 12,
+		paddingVertical: 10,
+		minHeight: 40,
+		justifyContent: "center",
+	},
+	catalogButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
 
 	footer: {
 		marginTop: "auto",
@@ -1099,6 +1253,22 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 
 		color: "#FFFFFF",
+	},
+
+	authError: {
+		marginTop: 14,
+		color: "#A52828",
+		fontSize: 14,
+		lineHeight: 20,
+		textAlign: "center",
+	},
+
+	authDiagnostic: {
+		marginTop: 12,
+		fontSize: 11,
+		lineHeight: 16,
+		color: "#666666",
+		textAlign: "left",
 	},
 
 	authImageContainer: {
